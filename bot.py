@@ -1,38 +1,40 @@
-from flask import Flask, request
-import requests
 import os
 import json
+import requests
+from flask import Flask, request
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
 
-# 🌍 Variables desde Render (Environment)
-VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
+VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "botardo")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-PHONE_ID = os.getenv("PHONE_ID")
-SHEET_NAME = os.getenv("SHEET_NAME")
-GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS", "/etc/secrets/credentials.json")
-print("DEBUG GOOGLE_CREDENTIALS:", GOOGLE_CREDENTIALS)
-import os
-print("EXISTE ARCHIVO?", os.path.exists(GOOGLE_CREDENTIALS))
+PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
+GOOGLE_CREDENTIALS_PATH = "/etc/secrets/credentials.json"  # Render Secrets
 
+# ========================
+# 📌 Conexión Google Sheets
+# ========================
+def get_google_sheet():
+    try:
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        creds = Credentials.from_service_account_file(GOOGLE_CREDENTIALS_PATH, scopes=scopes)
+        client = gspread.authorize(creds)
 
-# 📄 Autorización Google Sheets
-try:
-    scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_CREDENTIALS, scope)
-    client = gspread.authorize(creds)
-    sheet = client.open(SHEET_NAME).sheet1
-    print("📄 Hoja de cálculo cargada correctamente 🟢")
-except Exception as e:
-    print("❌ Error cargando Google Sheets:", e)
+        sheet = client.open_by_key(GOOGLE_SHEET_ID)
+        worksheet = sheet.worksheet("Solicitudes")  # NOMBRE EXACTO DE TU PESTAÑA ⚠
+        return worksheet
 
+    except Exception as e:
+        print(f"❌ Error cargando Google Sheets: {e}")
+        return None
 
-# 📩 Función para enviar mensaje a WhatsApp
-def send_whatsapp_message(to, message):
-    url = f"https://graph.facebook.com/v21.0/{PHONE_ID}/messages"
+# ========================
+# 📌 Enviar mensaje WhatsApp
+# ========================
+def send_message(to, message):
+    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
@@ -43,56 +45,49 @@ def send_whatsapp_message(to, message):
         "type": "text",
         "text": {"body": message}
     }
-    response = requests.post(url, headers=headers, json=data)
-    print("📤 Enviado a WhatsApp:", response.json())
+    
+    res = requests.post(url, headers=headers, json=data)
+    print("📤 RESPUESTA WHATSAPP:", res.status_code, res.text)
+    return res
 
+# ========================
+# 📌 Webhook Verificación
+# ========================
+@app.route("/webhook", methods=["GET"])
+def verify():
+    if request.args.get("hub.verify_token") == VERIFY_TOKEN:
+        return request.args.get("hub.challenge")
+    return "Token inválido"
 
-# 🔗 Webhook entrada Meta (GET & POST)
-@app.route("/webhook", methods=["GET", "POST"])
+# ========================
+# 📌 Webhook Mensajes entrantes
+# ========================
+@app.route("/webhook", methods=["POST"])
 def webhook():
-    if request.method == "GET":
-        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
-            print("🔐 Verificación del webhook exitosa")
-            return request.args.get("hub.challenge")
-        print("🚫 Error en verificación del token")
-        return "Error de verificación", 403
+    data = request.get_json()
+    print("📩 DATA RECIBIDA:", data)
 
-    if request.method == "POST":
-        print("📥 Mensaje recibido desde WhatsApp")
-        data = request.get_json()
-        print(json.dumps(data, indent=4))
+    try:
+        msg = data["entry"][0]["changes"][0]["value"]["messages"][0]
+        user = msg["from"]
+        text = msg["text"]["body"]
 
-        try:
-            message = data["entry"][0]["changes"][0]["value"]["messages"][0]
-            user_number = message["from"]
+        sheet = get_google_sheet()
 
-            if "text" in message:
-                user_message = message["text"]["body"]
-            else:
-                user_message = "(sin texto)"
+        if sheet:
+            sheet.append_row(["Mensaje", user, text])
+            send_message(user, f"📌 Recibido: {text}")
+        else:
+            send_message(user, "⚠ Error con el sistema, inténtalo más tarde.")
 
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    except Exception as e:
+        print("⚠ Error procesando mensaje:", e)
 
-            # Guardar en Google Sheets (solo número por ahora)
-            sheet.append_row([timestamp, "", "", "", "", "", "", user_number])
+    return "EVENT_RECEIVED"
 
-            send_whatsapp_message(user_number,
-                "👋 ¡Gracias por contactar con Ecobus!\n\n"
-                "Hemos recibido tu mensaje y estamos procesando tu solicitud 🚍💙"
-            )
-
-        except Exception as e:
-            print("⚠️ Error procesando mensaje:", e)
-
-        return "EVENT_RECEIVED", 200
-
-
-# 🏠 Página principal
 @app.route("/", methods=["GET"])
 def home():
-    return "🚀 Bot WhatsApp Ecobus funcionando 🟢", 200
+    return "Servidor de Ecobus Bot funcionando 🚐"
 
-
-# ▶ Ejecutar servidor cuando estamos en Render
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
