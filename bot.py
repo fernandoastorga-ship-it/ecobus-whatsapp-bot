@@ -13,7 +13,7 @@ VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_ID = os.getenv("PHONE_ID")
 SHEET_NAME = os.getenv("SHEET_NAME")
-GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS")
+GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS", "/etc/secrets/credentials.json")
 
 # 📄 Autorización Google Sheets
 try:
