@@ -14,6 +14,10 @@ WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_ID = os.getenv("PHONE_ID")
 SHEET_NAME = os.getenv("SHEET_NAME")
 GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS", "/etc/secrets/credentials.json")
+print("DEBUG GOOGLE_CREDENTIALS:", GOOGLE_CREDENTIALS)
+import os
+print("EXISTE ARCHIVO?", os.path.exists(GOOGLE_CREDENTIALS))
+
 
 # 📄 Autorización Google Sheets
 try:
