@@ -5,7 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from dotenv import load_dotenv
 import os
 
-# Cargar variables de entorno
+# Cargar variables de entorno (.env en local o env vars en Render)
 load_dotenv()
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
@@ -15,12 +15,13 @@ PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 app = Flask(__name__)
 
 # =============================
-# GOOGLE SHEETS SETUP
+# GOOGLE SHEETS CONFIG
 # =============================
 try:
     scope = ["https://www.googleapis.com/auth/spreadsheets",
              "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+    creds = ServiceAccountCredentials.from_json_keyfile_name(
+        "credentials.json", scope)
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID).sheet1
     print("📄 Google Sheets conectado correctamente 🟢")
@@ -29,7 +30,7 @@ except Exception as e:
     print("❌ Error conectando Google Sheets:", e)
 
 # =============================
-# WEBHOOK VERIFICATION (GET)
+# VERIFY WEBHOOK (GET)
 # =============================
 @app.route("/webhook", methods=["GET"])
 def verify_token():
@@ -62,13 +63,13 @@ def receive_message():
 
             print(f"📨 Mensaje de {sender}: {msg_text}")
 
-            # Guardar en Google Sheets
+            # Guardar mensaje en Google Sheets
             if sheet:
                 sheet.append_row([sender, msg_text])
-                print("📝 Mensaje guardado en Google Sheets")
+                print("📝 Mensaje guardado en Sheets")
 
-            # Enviar respuesta
-            send_whatsapp_message(sender, "¡Hola! Soy el bot de Ecobus 🚌✨ ¿En qué puedo ayudarte?")
+            # Responder con plantilla (permitido por Meta)
+            send_whatsapp_template(sender)
 
         return "EVENT_RECEIVED", 200
 
@@ -77,9 +78,9 @@ def receive_message():
         return "EVENT_NOT_RECEIVED", 200
 
 # =============================
-# SEND WHATSAPP MESSAGE
+# SEND TEMPLATE MESSAGE
 # =============================
-def send_whatsapp_message(to, message):
+def send_whatsapp_template(to):
     url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
@@ -90,15 +91,19 @@ def send_whatsapp_message(to, message):
     data = {
         "messaging_product": "whatsapp",
         "to": to,
-        "text": {"body": message}
+        "type": "template",
+        "template": {
+            "name": "hello_world",
+            "language": {"code": "en_US"}
+        }
     }
 
     response = requests.post(url, headers=headers, json=data)
-    print("📤 Enviando respuesta:", response.status_code, response.text)
+    print("📤 Respuesta enviada:", response.status_code, response.text)
     return response
 
 # =============================
-# RUN LOCAL ONLY
+# RUN APP (Local only)
 # =============================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
