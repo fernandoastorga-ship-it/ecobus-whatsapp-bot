@@ -13,25 +13,29 @@ WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 GOOGLE_SHEETS_ID = os.getenv("GOOGLE_SHEETS_ID")
 
-# Conexión Google Sheets (misma lógica anterior que funcionaba)
+# Conexión Google Sheets (estable y probada)
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
 client = gspread.authorize(credentials)
 worksheet = client.open_by_key(GOOGLE_SHEETS_ID).get_worksheet(0)
 
-# Memoria temporal de usuarios
+# Memoria temporal
 usuarios = {}
 
-# Enviar mensaje texto a WhatsApp
+
+# 📤 Enviar mensaje
 def enviar(to, message):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
     data = {"messaging_product": "whatsapp", "to": to, "text": {"body": message}}
     response = requests.post(url, headers=headers, json=data)
-    print("📤 Respuesta WhatsApp:", response.status_code, response.text)
+    print(f"📤 Enviado a {to}: {message}")
+    print("🔍 WhatsApp API:", response.status_code, response.text)
 
 
+# 🏠 Menú principal
 def menu_principal(to):
+    usuarios[to]["estado"] = None
     enviar(to,
         "Hola 👋 Soy el asistente de Ecobus 🚍\n"
         "¿Qué quieres hacer?\n\n"
@@ -40,84 +44,124 @@ def menu_principal(to):
     )
 
 
-def procesar_flujo(to, texto):
-    usuario = usuarios[to]
+# 🧾 Mostrar resumen
+def mostrar_resumen(to):
+    u = usuarios[to]
+    resumen = (
+        "🔥 Resumen del viaje solicitado:\n\n"
+        f"👤 Nombre: {u['Nombre']}\n"
+        f"📧 Correo: {u['Correo']}\n"
+        f"👥 Pasajeros: {u['Pasajeros']}\n"
+        f"📍 Origen: {u['Origen']}\n"
+        f"🎯 Destino: {u['Destino']}\n"
+        f"🕒 Ida: {u['Hora Ida']}\n"
+        f"🕒 Regreso: {u['Hora Regreso']}\n"
+        f"📱 Teléfono: {u['Telefono']}\n\n"
+        "¿Está todo correcto? (Sí/No)"
+    )
+    enviar(to, resumen)
 
-    if usuario["estado"] == "nombre":
-        usuario["Nombre"] = texto
-        usuario["estado"] = "correo"
+
+# 🔁 Flujo del usuario
+def procesar_flujo(to, texto, texto_lower):
+    u = usuarios[to]
+
+    if u["estado"] == "nombre":
+        u["Nombre"] = texto
+        u["estado"] = "correo"
         enviar(to, "📧 ¿Cuál es tu correo de contacto?")
 
-    elif usuario["estado"] == "correo":
-        usuario["Correo"] = texto
-        usuario["estado"] = "pasajeros"
+    elif u["estado"] == "correo":
+        u["Correo"] = texto
+        u["estado"] = "pasajeros"
         enviar(to, "👥 ¿Cuántos pasajeros serán?")
 
-    elif usuario["estado"] == "pasajeros":
-        usuario["Pasajeros"] = texto
-        usuario["estado"] = "origen"
+    elif u["estado"] == "pasajeros":
+        u["Pasajeros"] = texto
+        u["estado"] = "origen"
         enviar(to, "📍 ¿Desde dónde salen? (Dirección exacta)")
 
-    elif usuario["estado"] == "origen":
-        usuario["Origen"] = texto
-        usuario["estado"] = "destino"
+    elif u["estado"] == "origen":
+        u["Origen"] = texto
+        u["estado"] = "destino"
         enviar(to, "📍 ¿Hacia dónde se dirigen?")
 
-    elif usuario["estado"] == "destino":
-        usuario["Destino"] = texto
-        usuario["estado"] = "hora_ida"
+    elif u["estado"] == "destino":
+        u["Destino"] = texto
+        u["estado"] = "hora_ida"
         enviar(to, "🕒 ¿Hora aproximada de ida?")
 
-    elif usuario["estado"] == "hora_ida":
-        usuario["Hora Ida"] = texto
-        usuario["estado"] = "hora_vuelta"
+    elif u["estado"] == "hora_ida":
+        u["Hora Ida"] = texto
+        u["estado"] = "hora_vuelta"
         enviar(to, "🕒 ¿Hora de regreso?")
 
-    elif usuario["estado"] == "hora_vuelta":
-        usuario["Hora Regreso"] = texto
-        usuario["estado"] = "telefono"
+    elif u["estado"] == "hora_vuelta":
+        u["Hora Regreso"] = texto
+        u["estado"] = "telefono"
         enviar(to, "📱 Confírmame tu número telefónico de contacto")
 
-    elif usuario["estado"] == "telefono":
-        usuario["Telefono"] = texto
-        usuario["estado"] = "confirmar"
+    elif u["estado"] == "telefono":
+        u["Telefono"] = texto
+        u["estado"] = "confirmar"
+        mostrar_resumen(to)
 
-        resumen = (
-            "🔥 Resumen del viaje solicitado:\n\n"
-            f"👤 Nombre: {usuario['Nombre']}\n"
-            f"📧 Correo: {usuario['Correo']}\n"
-            f"👥 Pasajeros: {usuario['Pasajeros']}\n"
-            f"📍 Origen: {usuario['Origen']}\n"
-            f"🎯 Destino: {usuario['Destino']}\n"
-            f"🕒 Ida: {usuario['Hora Ida']}\n"
-            f"🕒 Regreso: {usuario['Hora Regreso']}\n"
-            f"📱 Teléfono: {usuario['Telefono']}\n\n"
-            "¿Está todo correcto? (Sí/No)"
-        )
-        enviar(to, resumen)
-
-    elif usuario["estado"] == "confirmar":
-        if texto.lower() in ["si", "sí", "s", "correcto"]:
+    elif u["estado"] == "confirmar":
+        if texto_lower in ["si", "sí", "s", "correcto"]:
             try:
                 worksheet.append_row([
                     datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
-                    usuario['Nombre'], usuario['Correo'],
-                    usuario['Pasajeros'], usuario['Origen'],
-                    usuario['Destino'], usuario['Hora Ida'],
-                    usuario['Hora Regreso'], usuario['Telefono']
+                    u['Nombre'], u['Correo'],
+                    u['Pasajeros'], u['Origen'],
+                    u['Destino'], u['Hora Ida'],
+                    u['Hora Regreso'], u['Telefono']
                 ])
-                enviar(to, "Perfecto 🎉 Ya registramos tu solicitud.\nUn ejecutivo te contactará pronto 🙌")
-
+                enviar(to, "🎉 ¡Cotización recibida! Muy pronto un ejecutivo te contactará 🙌\n✉️ Revisa tu mail !")
             except Exception as e:
                 print("❌ Error guardando en Sheets:", e)
-                enviar(to, "⚠️ Hubo un problema guardando tus datos. Intentaré nuevamente.")
-
+                enviar(to, "⚠️ Error guardando datos, pero ya recibimos tu solicitud.")
             usuarios.pop(to)
-
+        
+        elif texto_lower in ["no", "n"]:
+            u["estado"] = "corregir"
+            enviar(to,
+                "Entiendo 👍 ¿Qué dato quieres corregir?\n\n"
+                "1️⃣ Nombre\n"
+                "2️⃣ Correo\n"
+                "3️⃣ Pasajeros\n"
+                "4️⃣ Origen\n"
+                "5️⃣ Destino\n"
+                "6️⃣ Hora de ida\n"
+                "7️⃣ Hora de regreso\n"
+                "8️⃣ Teléfono"
+            )
         else:
-            enviar(to, "No hay problema 😃 Empecemos de nuevo")
-            usuarios.pop(to)
-            menu_principal(to)
+            enviar(to, "Por favor responde: Sí o No 😄")
+
+    elif u["estado"] == "corregir":
+        mapeo = {
+            "1": "Nombre",
+            "2": "Correo",
+            "3": "Pasajeros",
+            "4": "Origen",
+            "5": "Destino",
+            "6": "Hora Ida",
+            "7": "Hora Regreso",
+            "8": "Telefono"
+        }
+        if texto_lower in mapeo:
+            u["correccion"] = mapeo[texto_lower]
+            u["estado"] = "re_ingreso"
+            enviar(to, f"Perfecto 😃\nNuevo valor para {mapeo[texto_lower]}:")
+        else:
+            enviar(to, "Selecciona solo una opción del 1 al 8 😉")
+
+    elif u["estado"] == "re_ingreso":
+        campo = u["correccion"]
+        u[campo] = texto
+        u.pop("correccion")
+        u["estado"] = "confirmar"
+        mostrar_resumen(to)
 
 
 @app.route("/", methods=["GET"])
@@ -125,6 +169,7 @@ def home():
     return "🤖 Ecobus Bot Operativo", 200
 
 
+# 📬 Webhook WhatsApp
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook_metodo():
     if request.method == "GET":
@@ -145,10 +190,8 @@ def webhook_metodo():
             if to not in usuarios:
                 usuarios[to] = {"estado": None}
 
-            if texto_lower in ["hola", "menu", "buenas", "hola ecobus"]:
-                usuarios[to]["estado"] = None
-                menu_principal(to)
-                return "ok", 200
+            if texto_lower in ["hola", "menu", "buenas", "hey", "hola ecobus"]:
+                return menu_principal(to) or ("ok", 200)
 
             if usuarios[to]["estado"] is None:
                 if texto_lower == "1":
@@ -159,7 +202,7 @@ def webhook_metodo():
                 else:
                     menu_principal(to)
             else:
-                procesar_flujo(to, texto)
+                procesar_flujo(to, texto, texto_lower)
 
     except Exception as e:
         print("❌ ERROR WEBHOOK:", e)
