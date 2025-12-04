@@ -357,7 +357,7 @@ def procesar_flujo(to, texto, texto_lower):
                 print("❌ Error guardando en Google Sheets:", e)
 
             # 3) Intentamos enviar correo (y si falla, solo lo anotamos en logs)
-            enviar_email_cotizacion(u)
+            enviar_correo_notificacion(usuario)
 
             # 4) Cerramos flujo del usuario
             usuarios.pop(to, None)
