@@ -326,8 +326,17 @@ def procesar_flujo(to, texto, texto_lower):
 
     # 10) Confirmación (Sí / No)
     elif u["estado"] == "confirmar":
-        # Sí (botón o texto)
         if texto_lower in ["si", "sí", "s", "ok", "correcto", "confirmar_si"]:
+            # 1) SIEMPRE avisamos al cliente primero
+            enviar_texto(
+                to,
+                "🎉 *¡Solicitud recibida exitosamente!*\n"
+                "Estamos preparando tu cotización 🚍\n"
+                "Un ejecutivo se pondrá en contacto contigo.\n"
+                "📧 Revisa tu correo, ahí te llegará el detalle de la cotización."
+            )
+
+            # 2) Intentamos guardar en Google Sheets
             try:
                 sheet.append_row([
                     datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
@@ -344,17 +353,12 @@ def procesar_flujo(to, texto, texto_lower):
             except Exception as e:
                 print("❌ Error guardando en Google Sheets:", e)
 
-            # correo a fabian
+            # 3) Intentamos enviar correo (y si falla, solo lo anotamos en logs)
             enviar_email_cotizacion(u)
 
-            enviar_texto(
-                to,
-                "🎉 *¡Solicitud recibida exitosamente!*\n"
-                "Estamos preparando tu cotización 🚍\n"
-                "Un ejecutivo se pondrá en contacto contigo.\n"
-                "📧 Revisa tu correo, ahí te llegará el detalle de la cotización."
-            )
+            # 4) Cerramos flujo del usuario
             usuarios.pop(to, None)
+
 
         # No (botón o texto) → reiniciamos desde el menú
         elif texto_lower in ["no", "n", "confirmar_no"]:
