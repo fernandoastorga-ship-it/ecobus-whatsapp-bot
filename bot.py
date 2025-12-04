@@ -141,40 +141,43 @@ def hora_valida(hora_texto: str) -> bool:
 # CORREO DE COTIZACIÓN
 # =========================
 
-def enviar_email_cotizacion(u):
-    """Envía correo a NOTIFY_EMAIL con la info de la cotización."""
-    if not (SMTP_HOST and SMTP_USER and SMTP_PASS and NOTIFY_EMAIL):
-        print("⚠️ SMTP no configurado completamente. No se envía correo.")
-        return
-
-    cuerpo = (
-        "Nueva cotización Ecobus 🚍\n\n"
-        f"Nombre: {u.get('Nombre','')}\n"
-        f"Correo: {u.get('Correo','')}\n"
-        f"Pasajeros: {u.get('Pasajeros','')}\n"
-        f"Fecha viaje: {u.get('Fecha Viaje','')}\n"
-        f"Origen: {u.get('Origen','')}\n"
-        f"Destino: {u.get('Destino','')}\n"
-        f"Hora ida: {u.get('Hora Ida','')}\n"
-        f"Hora regreso: {u.get('Hora Regreso','')}\n"
-        f"Teléfono: {u.get('Telefono','')}\n"
-        f"Fecha de solicitud: {datetime.now().strftime('%d-%m-%Y %H:%M:%S')}\n"
-    )
-
-    msg = EmailMessage()
-    msg["Subject"] = "Nueva cotización Ecobus"
-    msg["From"] = FROM_EMAIL
-    msg["To"] = NOTIFY_EMAIL
-    msg.set_content(cuerpo)
-
+def enviar_correo_notificacion(usuario):
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
-        print("📧 Correo enviado a", NOTIFY_EMAIL)
+        import smtplib
+        from email.mime.text import MIMEText
+
+        cuerpo = (
+            "📬 Nueva solicitud de cotización recibida:\n\n"
+            f"👤 Nombre: {usuario['Nombre']}\n"
+            f"📧 Correo: {usuario['Correo']}\n"
+            f"📅 Fecha del viaje: {usuario['Fecha']}\n"
+            f"👥 Pasajeros: {usuario['Pasajeros']}\n"
+            f"📍 Origen: {usuario['Origen']}\n"
+            f"🎯 Destino: {usuario['Destino']}\n"
+            f"🕒 Ida: {usuario['Hora Ida']}\n"
+            f"🕒 Regreso: {usuario['Hora Regreso']}\n"
+            f"📱 Contacto: {usuario['Telefono']}\n"
+        )
+
+        msg = MIMEText(cuerpo, "plain", "utf-8")
+        msg["Subject"] = "Nueva solicitud de cotización - Ecobus"
+        msg["From"] = FROM_EMAIL
+        msg["To"] = NOTIFY_EMAIL
+
+        print("📬 Intentando enviar correo...")
+
+        server = smtplib.SMTP(SMTP_HOST, int(SMTP_PORT))
+        server.ehlo()
+        server.starttls()  # ✔ Necesario para Gmail
+        server.login(SMTP_USER, SMTP_PASS)
+        server.sendmail(FROM_EMAIL, NOTIFY_EMAIL, msg.as_string())
+        server.quit()
+
+        print("📧 Correo enviado correctamente a", NOTIFY_EMAIL)
+
     except Exception as e:
-        print("❌ Error enviando correo:", e)
+        print("⚠️ Error enviando correo:", str(e))
+
 
 
 # =========================
