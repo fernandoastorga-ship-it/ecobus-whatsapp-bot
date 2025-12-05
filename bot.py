@@ -265,26 +265,55 @@ def procesar_flujo(to, texto):
         enviar_confirmacion(to)
         return
 
-    if u["estado"] == "confirmar":
-        if texto in ["confirmar_si", "sí", "si"]:
+    elif u["estado"] == "confirmar":
+
+        # Si confirma
+        if texto_lower in ["confirmar_si", "si", "sí", "correcto"]:
+
+            # Guardar en Google Sheets
             try:
                 sheet.append_row([
                     datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
-                    u["Nombre"], u["Correo"], u["Fecha Viaje"],
-                    u["Pasajeros"], u["Origen"], u["Destino"],
-                    u["Hora Ida"], u["Hora Regreso"], u["Telefono"]
+                    u.get("Nombre", ""),
+                    u.get("Correo", ""),
+                    u.get("Pasajeros", ""),
+                    u.get("Origen", ""),
+                    u.get("Destino", ""),
+                    u.get("Hora Ida", ""),
+                    u.get("Hora Regreso", ""),
+                    u.get("Telefono", ""),
+                    u.get("Fecha Viaje", "")
                 ])
+                print("📊 Datos guardados correctamente")
+            except Exception as e:
+                print("❌ Error guardando en Sheets:", str(e))
+
+            # Enviar correo
+            try:
                 enviar_correo(u)
             except Exception as e:
-                print("❌ Error Sheets:", e)
+                print("⚠️ Error enviando correo:", str(e))
 
+            # Mensaje final al cliente
             enviar_texto(
                 to,
-                "🎉 *Solicitud recibida exitosamente!*\n"
+                "🎉 *¡Solicitud recibida exitosamente!*\n"
                 "Estamos preparando tu cotización 🚍\n"
-                "📧 Revisa tu correo 📩"
+                "📧 *Revisa tu correo*, ahí te llegará la información.\n"
+                "Un ejecutivo te contactará pronto 🙌"
             )
-            usuarios.pop(to)
+
+            usuarios.pop(to, None)
+            menu_principal(to)
+            return
+
+        # Si dice que NO está bien
+        else:
+            enviar_texto(to, "👌 No hay problema, volvamos desde el inicio 🚍")
+            usuarios.pop(to, None)
+            menu_principal(to)
+            return
+
         else:
             enviar_texto(to, "👌 Vamos de nuevo 🚍")
             usuarios.pop(to)
