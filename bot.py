@@ -327,44 +327,41 @@ def procesar_flujo(to, texto, texto_lower):
         enviar_confirmacion(to)
 
     # 10) Confirmación (Sí / No)
-   elif usuarios[to]["estado"] == "confirmar":
-        print("📌 Estamos en estado confirmar")
-        print("📌 Usuario completo:", usuario)
+    elif usuario["estado"] == "confirmar":
         if texto.lower() in ["si", "sí", "correcto"]:
-          try:
-              sheet.append_row([
-                  datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
-                  usuarios[to]['Nombre'],
-                  usuarios[to]['Correo'],
-                  usuarios[to]['Fecha'],
-                  usuarios[to]['Pasajeros'],
-                  usuarios[to]['Origen'],
-                  usuarios[to]['Destino'],
-                  usuarios[to]['Hora Ida'],
-                  usuarios[to]['Hora Regreso'],
-                  usuarios[to]['Telefono']
-              ])
 
-            enviar_correo_notificacion(usuarios[to])
+            try:
+                sheet.append_row([
+                    datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
+                    usuario[to]['Nombre'],
+                    usuario[to]['Correo'],
+                    usuario[to]['Fecha'],
+                    usuario[to]['Pasajeros'],
+                    usuario[to]['Origen'],
+                    usuario[to]['Destino'],
+                    usuario[to]['Hora Ida'],
+                    usuario[to]['Hora Regreso'],
+                    usuario[to]['Telefono']
+                ])
 
-            enviar(to,
-                "🎉 *¡Solicitud recibida exitosamente!*\n"
-                "Estamos preparando tu cotización 🚍\n"
-                "📧 Revisa tu correo, ahí te llegará toda la info.\n"
-                "Un ejecutivo te contactará pronto 🙌"
-            )
+                enviar_correo_notificacion(usuario)
 
-        except Exception as e:
-            print("❌ ERROR al finalizar cotización:", str(e))
+                enviar(to,
+                    "🎉 *¡Solicitud recibida exitosamente!*\n"
+                    "Estamos preparando tu cotización 🚍\n"
+                    "📧 Revisa tu correo, ahí te llegará toda la información.\n"
+                    "Un ejecutivo te contactará pronto 🙌"
+                )
 
-        usuarios.pop(to)
-        return "ok", 200
+            except Exception as e:
+                print("❌ ERROR finales:", str(e))
 
-    else:
-        enviar(to, "👌 No hay problema, podemos corregirlo.\nVamos nuevamente 👇")
-        usuarios.pop(to)
-        menu_principal(to)
-        return "ok", 200
+            usuarios.pop(to)
+        else:
+            enviar(to, "👌 No hay problema, vamos nuevamente 🚍")
+            usuarios.pop(to)
+            menu_principal(to)
+            return "ok", 200
 
             # 1) SIEMPRE avisamos al cliente primero
             enviar_texto(
