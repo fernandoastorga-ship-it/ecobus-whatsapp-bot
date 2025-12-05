@@ -124,6 +124,17 @@ def hora_valida(hora):
 # CORREO A EXECUTIVO
 # =========================
 def enviar_correo(usuario):
+    # Validamos que estén las variables críticas
+    if not SMTP_HOST or not SMTP_USER or not SMTP_PASS:
+        print("⚠️ SMTP no configurado correctamente. Faltan HOST/USER/PASS")
+        print("   SMTP_HOST:", SMTP_HOST)
+        print("   SMTP_USER:", SMTP_USER)
+        return
+
+    if not NOTIFY_EMAIL:
+        print("⚠️ NOTIFY_EMAIL no está configurado. No se puede enviar correo.")
+        return
+
     try:
         cuerpo = f"""
 Nueva cotización recibida 🚍
@@ -138,20 +149,27 @@ Nueva cotización recibida 🚍
 🕒 Regreso: {usuario['Hora Regreso']}
 📱 Teléfono: {usuario['Telefono']}
 """
+
         msg = MIMEText(cuerpo, "plain", "utf-8")
         msg["Subject"] = "Nueva solicitud de cotización - Ecobus"
         msg["From"] = FROM_EMAIL
         msg["To"] = NOTIFY_EMAIL
 
+        print("📬 Intentando enviar correo...")
+        print(f"   Servidor: {SMTP_HOST}:{SMTP_PORT}")
+        print(f"   From: {FROM_EMAIL} -> To: {NOTIFY_EMAIL}")
+
         server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+        server.ehlo()
         server.starttls()
         server.login(SMTP_USER, SMTP_PASS)
         server.sendmail(FROM_EMAIL, NOTIFY_EMAIL, msg.as_string())
         server.quit()
-        print("📧 Email enviado correctamente")
+
+        print("📧 Email enviado correctamente a", NOTIFY_EMAIL)
 
     except Exception as e:
-        print("⚠️ Error email:", e)
+        print("❌ Error al enviar correo:", repr(e))
 
 # =========================
 # MOSTRAR RESUMEN
