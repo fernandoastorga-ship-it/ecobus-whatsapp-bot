@@ -36,11 +36,12 @@ credentials = ServiceAccountCredentials.from_json_keyfile_name("credentials.json
 client = gspread.authorize(credentials)
 sheet = client.open_by_key(GOOGLE_SHEETS_ID).sheet1
 
-# Memoria temporal de usuarios
+# Memoria de usuarios
 usuarios = {}
 
+
 # =========================
-# UTILIDADES WHATSAPP
+# WHATSAPP
 # =========================
 def enviar_texto(to, message):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
@@ -54,10 +55,10 @@ def enviar_texto(to, message):
         "text": {"body": message}
     }
     r = requests.post(url, headers=headers, json=data)
-    print("📤 WhatsApp texto:", r.status_code, r.text)
+    print("📤 WhatsApp Texto:", r.status_code, r.text)
 
 
-def enviar_botones(to, cuerpo: str, botones):
+def enviar_botones(to, cuerpo, botones):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -72,17 +73,14 @@ def enviar_botones(to, cuerpo: str, botones):
             "body": {"text": cuerpo},
             "action": {
                 "buttons": [
-                    {
-                        "type": "reply",
-                        "reply": {"id": b["id"], "title": b["title"]}
-                    }
+                    {"type": "reply", "reply": {"id": b["id"], "title": b["title"]}}
                     for b in botones
                 ]
             }
         }
     }
     r = requests.post(url, headers=headers, json=data)
-    print("📤 Botones:", r.status_code, r.text)
+    print("📤 WhatsApp Botones:", r.status_code, r.text)
 
 
 def menu_principal(to):
@@ -106,6 +104,7 @@ def enviar_confirmacion(to):
         ]
     )
 
+
 # =========================
 # VALIDACIONES
 # =========================
@@ -113,35 +112,25 @@ def email_valido(correo):
     return "@" in correo and "." in correo.split("@")[-1]
 
 
-def hora_valida(hora):
+def hora_valida(h):
     try:
-        datetime.strptime(hora, "%H:%M")
+        datetime.strptime(h, "%H:%M")
         return True
-    except Exception:
+    except:
         return False
 
+
 # =========================
-# CORREO A EXECUTIVO
+# CORREO
 # =========================
 def enviar_correo(usuario):
-    # Validamos que estén las variables críticas
-    if not SMTP_HOST or not SMTP_USER or not SMTP_PASS:
-        print("⚠️ SMTP no configurado correctamente. Faltan HOST/USER/PASS")
-        print("   SMTP_HOST:", SMTP_HOST)
-        print("   SMTP_USER:", SMTP_USER)
-        return
-
-    if not NOTIFY_EMAIL:
-        print("⚠️ NOTIFY_EMAIL no está configurado. No se puede enviar correo.")
-        return
-
     try:
         cuerpo = f"""
-Nueva cotización recibida 🚍
+📬 Nueva solicitud de cotización:
 
 👤 Nombre: {usuario['Nombre']}
 📧 Correo: {usuario['Correo']}
-📅 Fecha: {usuario['Fecha Viaje']}
+📅 Fecha viaje: {usuario['Fecha Viaje']}
 👥 Pasajeros: {usuario['Pasajeros']}
 📍 Origen: {usuario['Origen']}
 🎯 Destino: {usuario['Destino']}
@@ -149,36 +138,34 @@ Nueva cotización recibida 🚍
 🕒 Regreso: {usuario['Hora Regreso']}
 📱 Teléfono: {usuario['Telefono']}
 """
-
         msg = MIMEText(cuerpo, "plain", "utf-8")
         msg["Subject"] = "Nueva solicitud de cotización - Ecobus"
         msg["From"] = FROM_EMAIL
         msg["To"] = NOTIFY_EMAIL
 
-        print("📬 Intentando enviar correo...")
-        print(f"   Servidor: {SMTP_HOST}:{SMTP_PORT}")
-        print(f"   From: {FROM_EMAIL} -> To: {NOTIFY_EMAIL}")
+        print("📬 Intentando enviar correo…")
+        print(f"SMTP: {SMTP_HOST}:{SMTP_PORT} → {NOTIFY_EMAIL}")
 
         server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
-        server.ehlo()
         server.starttls()
         server.login(SMTP_USER, SMTP_PASS)
         server.sendmail(FROM_EMAIL, NOTIFY_EMAIL, msg.as_string())
         server.quit()
 
-        print("📧 Email enviado correctamente a", NOTIFY_EMAIL)
+        print("📧 ✔ CORREO ENVIADO")
 
     except Exception as e:
-        print("❌ Error al enviar correo:", repr(e))
+        print("❌ ERROR CORREO:", repr(e))
+
 
 # =========================
-# MOSTRAR RESUMEN
+# RESUMEN
 # =========================
 def mostrar_resumen(to):
     u = usuarios[to]
     enviar_texto(
         to,
-        f"🔥 *Resumen del viaje*:\n\n"
+        "🔥 *Resumen del viaje solicitado*:\n\n"
         f"👤 {u['Nombre']}\n"
         f"📧 {u['Correo']}\n"
         f"📅 {u['Fecha Viaje']}\n"
@@ -188,21 +175,23 @@ def mostrar_resumen(to):
         f"📱 {u['Telefono']}\n"
     )
 
+
 # =========================
 # FLUJO PRINCIPAL
 # =========================
 def procesar_flujo(to, texto):
     u = usuarios[to]
+    texto_lower = texto.lower()
 
     if u["estado"] == "nombre":
         u["Nombre"] = texto
         u["estado"] = "correo"
-        enviar_texto(to, "📧 ¿Cuál es tu correo de contacto?")
+        enviar_texto(to, "📧 ¿Cuál es tu correo?")
         return
 
     if u["estado"] == "correo":
         if not email_valido(texto):
-            enviar_texto(to, "Correo inválido 😬\nEj: cliente@empresa.cl")
+            enviar_texto(to, "Correo inválido. Ej: cliente@empresa.cl")
             return
         u["Correo"] = texto
         u["estado"] = "pasajeros"
@@ -211,27 +200,27 @@ def procesar_flujo(to, texto):
 
     if u["estado"] == "pasajeros":
         u["Pasajeros"] = texto
-        u["estado"] = "fecha"
-        enviar_texto(to, "📅 Fecha DD-MM-AAAA")
+        u["estado"] = "fecha_viaje"
+        enviar_texto(to, "📅 Fecha viaje DD-MM-AAAA")
         return
 
-    if u["estado"] == "fecha":
+    if u["estado"] == "fecha_viaje":
         try:
             fecha = datetime.strptime(texto, "%d-%m-%Y").date()
             if fecha < date.today():
-                enviar_texto(to, "Debe ser una fecha futura ⏳")
+                enviar_texto(to, "Debe ser futura ⏳")
                 return
             u["Fecha Viaje"] = fecha.strftime("%d-%m-%Y")
             u["estado"] = "origen"
             enviar_texto(to, "📍 Dirección de origen")
         except:
-            enviar_texto(to, "⚠️ Ejemplo: 25-12-2025")
+            enviar_texto(to, "Formato inválido. Ej: 25-12-2025")
         return
 
     if u["estado"] == "origen":
         u["Origen"] = texto
         u["estado"] = "destino"
-        enviar_texto(to, "🎯 Dirección de destino")
+        enviar_texto(to, "🎯 Dirección destino")
         return
 
     if u["estado"] == "destino":
@@ -242,7 +231,7 @@ def procesar_flujo(to, texto):
 
     if u["estado"] == "ida":
         if not hora_valida(texto):
-            enviar_texto(to, "⚠️ Ej: 08:30")
+            enviar_texto(to, "Ej: 08:30")
             return
         u["Hora Ida"] = texto
         u["estado"] = "regreso"
@@ -251,11 +240,11 @@ def procesar_flujo(to, texto):
 
     if u["estado"] == "regreso":
         if not hora_valida(texto):
-            enviar_texto(to, "⚠️ Ej: 18:00")
+            enviar_texto(to, "Ej: 18:00")
             return
         u["Hora Regreso"] = texto
         u["estado"] = "telefono"
-        enviar_texto(to, "📱 Teléfono de contacto")
+        enviar_texto(to, "📱 Teléfono")
         return
 
     if u["estado"] == "telefono":
@@ -265,59 +254,47 @@ def procesar_flujo(to, texto):
         enviar_confirmacion(to)
         return
 
-    elif u["estado"] == "confirmar":
+    if u["estado"] == "confirmar":
 
-        # Si confirma
-        if texto_lower in ["confirmar_si", "si", "sí", "correcto"]:
+        if texto_lower in ["confirmar_si", "sí", "si"]:
 
-            # Guardar en Google Sheets
+            # Guardar en Sheets
             try:
                 sheet.append_row([
                     datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
-                    u.get("Nombre", ""),
-                    u.get("Correo", ""),
-                    u.get("Pasajeros", ""),
-                    u.get("Origen", ""),
-                    u.get("Destino", ""),
-                    u.get("Hora Ida", ""),
-                    u.get("Hora Regreso", ""),
-                    u.get("Telefono", ""),
-                    u.get("Fecha Viaje", "")
+                    u.get("Nombre"),
+                    u.get("Correo"),
+                    u.get("Fecha Viaje"),
+                    u.get("Pasajeros"),
+                    u.get("Origen"),
+                    u.get("Destino"),
+                    u.get("Hora Ida"),
+                    u.get("Hora Regreso"),
+                    u.get("Telefono"),
                 ])
-                print("📊 Datos guardados correctamente")
+                print("📊 Guardado en Sheets")
             except Exception as e:
-                print("❌ Error guardando en Sheets:", str(e))
+                print("❌ Error Sheets:", e)
 
-            # Enviar correo
-            try:
-                enviar_correo(u)
-            except Exception as e:
-                print("⚠️ Error enviando correo:", str(e))
+            # Email
+            enviar_correo(u)
 
-            # Mensaje final al cliente
+            # Mensaje final
             enviar_texto(
                 to,
-                "🎉 *¡Solicitud recibida exitosamente!*\n"
+                "🎉 *Solicitud recibida exitosamente!*\n"
                 "Estamos preparando tu cotización 🚍\n"
-                "📧 *Revisa tu correo*, ahí te llegará la información.\n"
-                "Un ejecutivo te contactará pronto 🙌"
+                "📧 Revisa tu correo (incluye SPAM)\n"
+                "Un ejecutivo te contactará 🙌"
             )
 
             usuarios.pop(to, None)
-            menu_principal(to)
-            return
+            return menu_principal(to)
 
-        # Si dice que NO está bien
         else:
-            enviar_texto(to, "👌 No hay problema, volvamos desde el inicio 🚍")
+            enviar_texto(to, "👌 Vamos desde el inicio")
             usuarios.pop(to, None)
-            menu_principal(to)
-            return
-
-        else:
-            enviar_texto(to, "👌 Vamos de nuevo 🚍")
-            usuarios.pop(to)
-            menu_principal(to)
+            return menu_principal(to)
 
 
 # =========================
@@ -325,9 +302,10 @@ def procesar_flujo(to, texto):
 # =========================
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+
     if request.method == "GET":
         if request.args.get("hub.verify_token") == VERIFY_TOKEN:
-            return request.args.get("hub.challenge"), 200
+            return request.args.get("hub.challenge")
         return "Token inválido", 403
 
     data = request.get_json()
@@ -335,37 +313,34 @@ def webhook():
 
     try:
         entry = data["entry"][0]["changes"][0]["value"]
-
         if "messages" not in entry:
-            print("Ignorado (sin mensajes)")
-            return jsonify({"status": "ok"}), 200
+            return jsonify({"status": "ignored"}), 200
 
         for msg in entry["messages"]:
+            de = msg["from"]
             tipo = msg.get("type")
-            de = msg.get("from")
 
             if de not in usuarios:
                 usuarios[de] = {"estado": None}
 
-            texto = ""
-
             if tipo == "text":
                 texto = msg["text"]["body"].strip()
-
             elif tipo == "interactive":
                 texto = msg["interactive"]["button_reply"]["id"]
+            else:
+                continue
 
             texto_lower = texto.lower()
 
-            if texto_lower in ["hola", "menú", "menu"]:
+            if texto_lower in ["hola", "menu", "menú"]:
                 usuarios[de]["estado"] = None
                 return menu_principal(de)
 
             if usuarios[de]["estado"] is None:
-                if texto == "cotizar":
+                if texto_lower == "cotizar":
                     usuarios[de] = {"estado": "nombre"}
                     enviar_texto(de, "👤 ¿Tu nombre?")
-                elif texto == "ejecutivo":
+                elif texto_lower == "ejecutivo":
                     enviar_texto(de, "📞 +56 9 9871 1060")
                 else:
                     menu_principal(de)
@@ -378,9 +353,9 @@ def webhook():
     return jsonify({"status": "ok"}), 200
 
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
-    return "🤖 Bot Ecobus Activo 🚍", 200
+    return "🤖 BOT Ecobus Activo", 200
 
 
 if __name__ == "__main__":
