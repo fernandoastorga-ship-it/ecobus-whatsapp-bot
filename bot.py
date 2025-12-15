@@ -193,93 +193,157 @@ def corregir_campos(to, texto_lower):
         "origen": "origen",
         "destino": "destino",
         "pasajeros": "pasajeros",
-        "teléfono": "telefono",
         "telefono": "telefono",
         "ida": "ida",
         "regreso": "regreso",
     }
+
     for key, estado in mapping.items():
         if f"cambiar {key}" in texto_lower:
             usuarios[to]["estado"] = estado
-            enviar_texto(to, f"Ok! Envíame el nuevo {key}:")
+            usuarios[to]["modo_correccion"] = True
+            enviar_texto(to, f"Ok 👍 Envíame el nuevo {key}:")
             return True
+
     return False
 
 # -------- Flujo principal --------
 def procesar_flujo(to, texto, texto_lower):
     u = usuarios[to]
 
+    # Si el usuario escribió "cambiar X"
     if corregir_campos(to, texto_lower):
         return
 
     estado = u["estado"]
 
+    # -------- NOMBRE --------
     if estado == "nombre":
         u["Nombre"] = texto
-        u["estado"] = "correo"
-        return enviar_texto(to, "📧 ¿Cual es su correo?")
 
+        if u.get("modo_correccion"):
+            u["modo_correccion"] = False
+            mostrar_resumen(to)
+            return enviar_confirmacion(to)
+
+        u["estado"] = "correo"
+        return enviar_texto(to, "📧 ¿Cuál es su correo?")
+
+    # -------- CORREO --------
     if estado == "correo":
         if not email_valido(texto):
             return enviar_texto(to, "Correo inválido ⚠️")
-        u["Correo"] = texto
-        u["estado"] = "pasajeros"
-        return enviar_texto(to, "👥 ¿Cuantos pasajeros?")
 
+        u["Correo"] = texto
+
+        if u.get("modo_correccion"):
+            u["modo_correccion"] = False
+            mostrar_resumen(to)
+            return enviar_confirmacion(to)
+
+        u["estado"] = "pasajeros"
+        return enviar_texto(to, "👥 ¿Cuántos pasajeros?")
+
+    # -------- PASAJEROS --------
     if estado == "pasajeros":
         u["Pasajeros"] = texto
+
+        if u.get("modo_correccion"):
+            u["modo_correccion"] = False
+            mostrar_resumen(to)
+            return enviar_confirmacion(to)
+
         u["estado"] = "fecha"
         return enviar_texto(to, "📅 Fecha DD-MM-AAAA")
 
+    # -------- FECHA --------
     if estado == "fecha":
         try:
             f = datetime.strptime(texto, "%d-%m-%Y").date()
             if f < date.today():
                 return enviar_texto(to, "Fecha futura por favor ⏳")
-            u["Fecha Viaje"] = f.strftime("%d-%m-%Y")
-            u["estado"] = "origen"
-            return enviar_texto(to, "📍 ¿Desde donde salen?")
-        except:
-            return enviar_texto(to, "Formato inválido 25-12-2026")
 
+            u["Fecha Viaje"] = f.strftime("%d-%m-%Y")
+
+            if u.get("modo_correccion"):
+                u["modo_correccion"] = False
+                mostrar_resumen(to)
+                return enviar_confirmacion(to)
+
+            u["estado"] = "origen"
+            return enviar_texto(to, "📍 ¿Desde dónde salen?")
+        except:
+            return enviar_texto(to, "Formato inválido. Ej: 25-12-2026")
+
+    # -------- ORIGEN --------
     if estado == "origen":
         u["Origen"] = texto
-        u["estado"] = "destino"
-        return enviar_texto(to, "🎯 ¿Hacia donde se dirigen?")
 
+        if u.get("modo_correccion"):
+            u["modo_correccion"] = False
+            mostrar_resumen(to)
+            return enviar_confirmacion(to)
+
+        u["estado"] = "destino"
+        return enviar_texto(to, "🎯 ¿Hacia dónde se dirigen?")
+
+    # -------- DESTINO --------
     if estado == "destino":
         u["Destino"] = texto
-        u["estado"] = "ida"
-        return enviar_texto(to, "🕒 ¿A que hora desean salir? (HH:MM)")
 
+        if u.get("modo_correccion"):
+            u["modo_correccion"] = False
+            mostrar_resumen(to)
+            return enviar_confirmacion(to)
+
+        u["estado"] = "ida"
+        return enviar_texto(to, "🕒 ¿A qué hora desean salir? (HH:MM)")
+
+    # -------- HORA IDA --------
     if estado == "ida":
         if not hora_valida(texto):
             return enviar_texto(to, "Ej: 08:30 ⏱️")
-        u["Hora Ida"] = texto
-        u["estado"] = "regreso"
-        return enviar_texto(to, "🕒 ¿A que hora desean regresar?")
 
+        u["Hora Ida"] = texto
+
+        if u.get("modo_correccion"):
+            u["modo_correccion"] = False
+            mostrar_resumen(to)
+            return enviar_confirmacion(to)
+
+        u["estado"] = "regreso"
+        return enviar_texto(to, "🕒 ¿A qué hora desean regresar?")
+
+    # -------- HORA REGRESO --------
     if estado == "regreso":
         if not hora_valida(texto):
             return enviar_texto(to, "Ej: 18:00 ⏱️")
-        u["Hora Regreso"] = texto
-        u["estado"] = "telefono"
-        return enviar_texto(to, "📱 ¿Cual es su numero de telefono?")
 
+        u["Hora Regreso"] = texto
+
+        if u.get("modo_correccion"):
+            u["modo_correccion"] = False
+            mostrar_resumen(to)
+            return enviar_confirmacion(to)
+
+        u["estado"] = "telefono"
+        return enviar_texto(to, "📱 ¿Cuál es su número de teléfono?")
+
+    # -------- TELÉFONO --------
     if estado == "telefono":
         if not telefono_valido(texto):
             return enviar_texto(to, "Número inválido ⚠️ Ej: +56912345678")
+
         u["Telefono"] = texto
         u["estado"] = "confirmar"
         mostrar_resumen(to)
         return enviar_confirmacion(to)
 
+    # -------- CONFIRMAR --------
     if estado == "confirmar":
         if texto_lower == "confirmar_si":
             print("✅ USUARIO CONFIRMÓ COTIZACIÓN")
 
-
-            # 1️⃣ Confirmación inmediata al usuario (SIEMPRE se envía)
             enviar_texto(
                 to,
                 "🎉 ¡Solicitud confirmada!\n"
@@ -287,6 +351,29 @@ def procesar_flujo(to, texto, texto_lower):
                 "📧 Revisa tu correo ✉️\n"
                 "¡Gracias por preferir Ecobus!"
             )
+
+            correo_ok = enviar_correo(u)
+
+            if not correo_ok:
+                enviar_texto(
+                    to,
+                    "⚠️ La solicitud quedó confirmada, pero hubo un problema enviando el correo interno."
+                )
+
+            usuarios.pop(to, None)
+            return
+
+        if texto_lower == "confirmar_no":
+            return enviar_texto(
+                to,
+                "Para corregir, escribe por ejemplo: *cambiar correo*"
+            )
+
+        return enviar_texto(
+            to,
+            "Por favor confirma usando los botones: *Sí* o *Corregir*."
+        )
+
 
             # 2️⃣ Guardar en Google Sheets (ya confirmado que funciona)
             try:
@@ -357,8 +444,11 @@ def webhook():
 
         texto_lower = texto.lower()
 
-        if wa_id not in usuarios:
-            usuarios[wa_id] = {"estado": None}
+     usuarios[wa_id] = {
+         "estado": None,
+         "modo_correccion": False
+     }
+
 
         if texto_lower in ["hola", "menú", "menu", "inicio"]:
             usuarios[wa_id]["estado"] = None
