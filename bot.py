@@ -94,6 +94,14 @@ def enviar_botones(to, cuerpo, botones):
 
 # -------- Email --------
 def enviar_correo(usuario):
+    print("📨 INTENTANDO ENVIAR CORREO SENDGRID")
+    print("FROM_EMAIL:", FROM_EMAIL)
+    print("NOTIFY_EMAIL:", NOTIFY_EMAIL)
+
+    SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+    print("SENDGRID_API_KEY EXISTE:", bool(SENDGRID_API_KEY))
+
+def enviar_correo(usuario):
     try:
         SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
         if not SENDGRID_API_KEY:
@@ -268,6 +276,8 @@ def procesar_flujo(to, texto, texto_lower):
 
     if estado == "confirmar":
         if texto_lower == "confirmar_si":
+            print("✅ USUARIO CONFIRMÓ COTIZACIÓN")
+
 
             # 1️⃣ Confirmación inmediata al usuario (SIEMPRE se envía)
             enviar_texto(
@@ -297,6 +307,8 @@ def procesar_flujo(to, texto, texto_lower):
 
             # 3️⃣ Envío de correo (AQUÍ VA EL CÓDIGO QUE PREGUNTAS)
             correo_ok = enviar_correo(u)
+            print("✅ USUARIO CONFIRMÓ COTIZACIÓN")
+
 
             if not correo_ok:
                 enviar_texto(
