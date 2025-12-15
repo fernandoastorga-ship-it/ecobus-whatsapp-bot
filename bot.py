@@ -94,12 +94,12 @@ def enviar_botones(to, cuerpo, botones):
 
 # -------- Email --------
 def enviar_correo(usuario):
-    # Validación básica de entorno
-    if not all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, NOTIFY_EMAIL]):
-        print("❌ SMTP mal configurado: faltan variables de entorno")
-        return False
-
     try:
+        SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+        if not SENDGRID_API_KEY:
+            print("❌ Falta SENDGRID_API_KEY en variables de entorno")
+            return False
+
         cuerpo = (
             "Nueva solicitud de cotización - Ecobus\n\n"
             f"Nombre: {usuario.get('Nombre','')}\n"
@@ -113,37 +113,37 @@ def enviar_correo(usuario):
             f"Teléfono: {usuario.get('Telefono','')}\n"
         )
 
-        msg = MIMEText(cuerpo, "plain", "utf-8")
-        msg["Subject"] = "🚍 Nueva cotización recibida - Ecobus"
-        msg["From"] = FROM_EMAIL
-        msg["To"] = NOTIFY_EMAIL
+        url = "https://api.sendgrid.com/v3/mail/send"
+        headers = {
+            "Authorization": f"Bearer {SENDGRID_API_KEY}",
+            "Content-Type": "application/json"
+        }
 
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20)
-        server.ehlo()
-        server.starttls()
-        server.ehlo()
-        server.login(SMTP_USER, SMTP_PASS)
+        payload = {
+            "personalizations": [
+                {
+                    "to": [{"email": NOTIFY_EMAIL}],
+                    "subject": "🚍 Nueva cotización recibida - Ecobus"
+                }
+            ],
+            "from": {"email": FROM_EMAIL},
+            "content": [
+                {"type": "text/plain", "value": cuerpo}
+            ]
+        }
 
-        server.sendmail(
-            FROM_EMAIL,
-            [NOTIFY_EMAIL],
-            msg.as_string()
-        )
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
 
-        server.quit()
-        print("📧 Correo enviado correctamente a", NOTIFY_EMAIL)
-        return True
+        if r.status_code == 202:
+            print("📧 Correo SendGrid enviado correctamente")
+            return True
 
-    except smtplib.SMTPAuthenticationError as e:
-        print("❌ Error autenticación SMTP:", e)
-    except smtplib.SMTPConnectError as e:
-        print("❌ Error conexión SMTP:", e)
-    except smtplib.SMTPRecipientsRefused as e:
-        print("❌ Destinatario rechazado:", e)
+        print("❌ Error SendGrid:", r.status_code, r.text)
+        return False
+
     except Exception as e:
-        print("❌ Error general enviando correo:", e)
-
-    return False
+        print("❌ Exception enviar_correo (SendGrid):", e)
+        return False
 
 
 # -------- MENÚ --------
@@ -209,14 +209,14 @@ def procesar_flujo(to, texto, texto_lower):
     if estado == "nombre":
         u["Nombre"] = texto
         u["estado"] = "correo"
-        return enviar_texto(to, "📧 Correo?")
+        return enviar_texto(to, "📧 ¿Cual es su correo?")
 
     if estado == "correo":
         if not email_valido(texto):
             return enviar_texto(to, "Correo inválido ⚠️")
         u["Correo"] = texto
         u["estado"] = "pasajeros"
-        return enviar_texto(to, "👥 Pasajeros?")
+        return enviar_texto(to, "👥 ¿Cuantos pasajeros?")
 
     if estado == "pasajeros":
         u["Pasajeros"] = texto
@@ -230,33 +230,33 @@ def procesar_flujo(to, texto, texto_lower):
                 return enviar_texto(to, "Fecha futura por favor ⏳")
             u["Fecha Viaje"] = f.strftime("%d-%m-%Y")
             u["estado"] = "origen"
-            return enviar_texto(to, "📍 Origen?")
+            return enviar_texto(to, "📍 ¿Desde donde salen?")
         except:
             return enviar_texto(to, "Formato inválido 25-12-2026")
 
     if estado == "origen":
         u["Origen"] = texto
         u["estado"] = "destino"
-        return enviar_texto(to, "🎯 Destino?")
+        return enviar_texto(to, "🎯 ¿Hacia donde se dirigen?")
 
     if estado == "destino":
         u["Destino"] = texto
         u["estado"] = "ida"
-        return enviar_texto(to, "🕒 Hora ida (HH:MM)?")
+        return enviar_texto(to, "🕒 ¿A que hora desean salir? (HH:MM)")
 
     if estado == "ida":
         if not hora_valida(texto):
             return enviar_texto(to, "Ej: 08:30 ⏱️")
         u["Hora Ida"] = texto
         u["estado"] = "regreso"
-        return enviar_texto(to, "🕒 Hora regreso?")
+        return enviar_texto(to, "🕒 ¿A que hora desean regresar?")
 
     if estado == "regreso":
         if not hora_valida(texto):
             return enviar_texto(to, "Ej: 18:00 ⏱️")
         u["Hora Regreso"] = texto
         u["estado"] = "telefono"
-        return enviar_texto(to, "📱 Teléfono?")
+        return enviar_texto(to, "📱 ¿Cual es su numero de telefono?")
 
     if estado == "telefono":
         if not telefono_valido(texto):
