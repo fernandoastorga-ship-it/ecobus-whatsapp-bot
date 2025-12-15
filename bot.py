@@ -94,33 +94,57 @@ def enviar_botones(to, cuerpo, botones):
 
 # -------- Email --------
 def enviar_correo(usuario):
+    # Validación básica de entorno
+    if not all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, NOTIFY_EMAIL]):
+        print("❌ SMTP mal configurado: faltan variables de entorno")
+        return False
+
     try:
         cuerpo = (
-            f"Nueva solicitud 🚍\n\n"
-            f"Nombre: {usuario['Nombre']}\n"
-            f"Correo: {usuario['Correo']}\n"
-            f"Fecha: {usuario['Fecha Viaje']}\n"
-            f"Pasajeros: {usuario['Pasajeros']}\n"
-            f"Origen: {usuario['Origen']}\n"
-            f"Destino: {usuario['Destino']}\n"
-            f"Ida: {usuario['Hora Ida']}\n"
-            f"Regreso: {usuario['Hora Regreso']}\n"
-            f"Teléfono: {usuario['Telefono']}\n"
+            "Nueva solicitud de cotización - Ecobus\n\n"
+            f"Nombre: {usuario.get('Nombre','')}\n"
+            f"Correo: {usuario.get('Correo','')}\n"
+            f"Fecha viaje: {usuario.get('Fecha Viaje','')}\n"
+            f"Pasajeros: {usuario.get('Pasajeros','')}\n"
+            f"Origen: {usuario.get('Origen','')}\n"
+            f"Destino: {usuario.get('Destino','')}\n"
+            f"Hora ida: {usuario.get('Hora Ida','')}\n"
+            f"Hora regreso: {usuario.get('Hora Regreso','')}\n"
+            f"Teléfono: {usuario.get('Telefono','')}\n"
         )
 
         msg = MIMEText(cuerpo, "plain", "utf-8")
-        msg["Subject"] = "Nueva cotización - Ecobus"
+        msg["Subject"] = "🚍 Nueva cotización recibida - Ecobus"
         msg["From"] = FROM_EMAIL
         msg["To"] = NOTIFY_EMAIL
 
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20)
+        server.ehlo()
         server.starttls()
+        server.ehlo()
         server.login(SMTP_USER, SMTP_PASS)
-        server.sendmail(FROM_EMAIL, NOTIFY_EMAIL, msg.as_string())
+
+        server.sendmail(
+            FROM_EMAIL,
+            [NOTIFY_EMAIL],
+            msg.as_string()
+        )
+
         server.quit()
-        print("📧 Enviado correctamente")
+        print("📧 Correo enviado correctamente a", NOTIFY_EMAIL)
+        return True
+
+    except smtplib.SMTPAuthenticationError as e:
+        print("❌ Error autenticación SMTP:", e)
+    except smtplib.SMTPConnectError as e:
+        print("❌ Error conexión SMTP:", e)
+    except smtplib.SMTPRecipientsRefused as e:
+        print("❌ Destinatario rechazado:", e)
     except Exception as e:
-        print("❌ Error al enviar correo:", e)
+        print("❌ Error general enviando correo:", e)
+
+    return False
+
 
 # -------- MENÚ --------
 def menu_principal(to):
@@ -333,6 +357,20 @@ def webhook():
 
     return jsonify({"status": "ok"}), 200
 
+@app.route("/test-mail")
+def test_mail():
+    ok = enviar_correo({
+        "Nombre": "Test",
+        "Correo": "test@test.cl",
+        "Fecha Viaje": "01-01-2026",
+        "Pasajeros": "10",
+        "Origen": "Santiago",
+        "Destino": "Valparaíso",
+        "Hora Ida": "08:00",
+        "Hora Regreso": "18:00",
+        "Telefono": "+56912345678"
+    })
+    return "OK" if ok else "ERROR"
 
 @app.route("/")
 def home():
