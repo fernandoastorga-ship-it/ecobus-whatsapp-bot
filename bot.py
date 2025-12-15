@@ -52,7 +52,16 @@ def enviar_texto(to, msg):
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}",
                "Content-Type": "application/json"}
     data = {"messaging_product": "whatsapp", "to": to, "text": {"body": msg}}
-    requests.post(url, headers=headers, json=data)
+
+    try:
+        r = requests.post(url, headers=headers, json=data, timeout=10)
+        if r.status_code >= 300:
+            print("❌ Error WhatsApp enviar_texto:", r.status_code, r.text)
+        return r
+    except Exception as e:
+        print("❌ Exception WhatsApp enviar_texto:", e)
+        return None
+
 
 def enviar_botones(to, cuerpo, botones):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
@@ -73,7 +82,15 @@ def enviar_botones(to, cuerpo, botones):
             }
         }
     }
-    requests.post(url, headers=headers, json=data)
+
+    try:
+        r = requests.post(url, headers=headers, json=data, timeout=10)
+        if r.status_code >= 300:
+            print("❌ Error WhatsApp enviar_botones:", r.status_code, r.text)
+        return r
+    except Exception as e:
+        print("❌ Exception WhatsApp enviar_botones:", e)
+        return None
 
 # -------- Email --------
 def enviar_correo(usuario):
@@ -227,24 +244,49 @@ def procesar_flujo(to, texto, texto_lower):
 
     if estado == "confirmar":
         if texto_lower == "confirmar_si":
-            sheet.append_row([
-                datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
-                u["Nombre"], u["Correo"], u["Pasajeros"],
-                u["Origen"], u["Destino"],
-                u["Hora Ida"], u["Hora Regreso"],
-                u["Telefono"], u["Fecha Viaje"]
-            ])
-            enviar_correo(u)
+            # 1) Mensaje al usuario primero (para que SIEMPRE llegue)
             enviar_texto(to,
                 "🎉 ¡Solicitud confirmada!\n"
                 "Estamos creando tu cotización 🚍\n"
                 "📧 Revisa tu correo ✉️\n"
-                "¡Gracias por preferir Ecobus! 💙"
+                "¡Gracias por preferir Ecobus!"
             )
+
+            # 2) Luego guardamos y notificamos (protegido)
+            try:
+                sheet.append_row([
+                    datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
+                    u.get("Nombre", ""),
+                    u.get("Correo", ""),
+                    u.get("Pasajeros", ""),
+                    u.get("Origen", ""),
+                    u.get("Destino", ""),
+                    u.get("Hora Ida", ""),
+                    u.get("Hora Regreso", ""),
+                    u.get("Telefono", ""),
+                    u.get("Fecha Viaje", "")
+                ])
+            except Exception as e:
+                print("❌ Error al guardar en Google Sheets:", e)
+                # Opcional: avisar al usuario de forma suave
+                enviar_texto(to, "⚠️ Tuvimos un problema guardando tu solicitud, pero quedó confirmada. Un ejecutivo la revisará.")
+
+            try:
+                enviar_correo(u)
+            except Exception as e:
+                print("❌ Error al enviar correo:", e)
+                # Opcional: avisar al usuario si quieres
+                # enviar_texto(to, "⚠️ No pudimos enviar el correo automático, pero la solicitud quedó registrada.")
+
             usuarios.pop(to, None)
             return
-        else:
+
+        if texto_lower == "confirmar_no":
             return enviar_texto(to, "Para corregir, escribe por ej: *cambiar correo*")
+
+        # Si llega algo raro en confirmación
+        return enviar_texto(to, "Por favor confirma con los botones: *Sí* o *Corregir*.")
+
 
 # -------- Webhook --------
 @app.route("/webhook", methods=["GET", "POST"])
