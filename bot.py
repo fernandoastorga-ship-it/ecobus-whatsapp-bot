@@ -216,6 +216,7 @@ def procesar_flujo(to, texto, texto_lower):
 
         if u.get("modo_correccion"):
             u["modo_correccion"] = False
+            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
             mostrar_resumen(to)
             return enviar_confirmacion(to)
 
@@ -231,6 +232,7 @@ def procesar_flujo(to, texto, texto_lower):
 
         if u.get("modo_correccion"):
             u["modo_correccion"] = False
+            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
             mostrar_resumen(to)
             return enviar_confirmacion(to)
 
@@ -243,6 +245,7 @@ def procesar_flujo(to, texto, texto_lower):
 
         if u.get("modo_correccion"):
             u["modo_correccion"] = False
+            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
             mostrar_resumen(to)
             return enviar_confirmacion(to)
 
@@ -260,6 +263,7 @@ def procesar_flujo(to, texto, texto_lower):
 
             if u.get("modo_correccion"):
                 u["modo_correccion"] = False
+                u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
                 mostrar_resumen(to)
                 return enviar_confirmacion(to)
 
@@ -274,6 +278,7 @@ def procesar_flujo(to, texto, texto_lower):
 
         if u.get("modo_correccion"):
             u["modo_correccion"] = False
+            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
             mostrar_resumen(to)
             return enviar_confirmacion(to)
 
@@ -286,6 +291,7 @@ def procesar_flujo(to, texto, texto_lower):
 
         if u.get("modo_correccion"):
             u["modo_correccion"] = False
+            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
             mostrar_resumen(to)
             return enviar_confirmacion(to)
 
@@ -301,6 +307,7 @@ def procesar_flujo(to, texto, texto_lower):
 
         if u.get("modo_correccion"):
             u["modo_correccion"] = False
+            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
             mostrar_resumen(to)
             return enviar_confirmacion(to)
 
@@ -316,6 +323,7 @@ def procesar_flujo(to, texto, texto_lower):
 
         if u.get("modo_correccion"):
             u["modo_correccion"] = False
+            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
             mostrar_resumen(to)
             return enviar_confirmacion(to)
 
@@ -344,6 +352,7 @@ def procesar_flujo(to, texto, texto_lower):
                 "📧 Revisa tu correo ✉️\n"
                 "¡Gracias por preferir Ecobus!"
             )
+
 
             correo_ok = enviar_correo(u)
 
@@ -408,7 +417,7 @@ def webhook():
         if usuarios[wa_id]["estado"] is None:
             if texto_lower == "cotizar":
                 usuarios[wa_id]["estado"] = "nombre"
-                enviar_texto(wa_id, "👤 Nombre?")
+                enviar_texto(wa_id, "👤 Nombre de la persona/empresa solicitante")
             elif texto_lower == "ejecutivo":
                 enviar_texto(wa_id, "📞 +56 9 9871 1060")
             else:
