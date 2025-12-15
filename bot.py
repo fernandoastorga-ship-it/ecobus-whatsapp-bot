@@ -268,15 +268,17 @@ def procesar_flujo(to, texto, texto_lower):
 
     if estado == "confirmar":
         if texto_lower == "confirmar_si":
-            # 1) Mensaje al usuario primero (para que SIEMPRE llegue)
-            enviar_texto(to,
+
+            # 1️⃣ Confirmación inmediata al usuario (SIEMPRE se envía)
+            enviar_texto(
+                to,
                 "🎉 ¡Solicitud confirmada!\n"
                 "Estamos creando tu cotización 🚍\n"
                 "📧 Revisa tu correo ✉️\n"
                 "¡Gracias por preferir Ecobus!"
             )
 
-            # 2) Luego guardamos y notificamos (protegido)
+            # 2️⃣ Guardar en Google Sheets (ya confirmado que funciona)
             try:
                 sheet.append_row([
                     datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
@@ -292,24 +294,31 @@ def procesar_flujo(to, texto, texto_lower):
                 ])
             except Exception as e:
                 print("❌ Error al guardar en Google Sheets:", e)
-                # Opcional: avisar al usuario de forma suave
-                enviar_texto(to, "⚠️ Tuvimos un problema guardando tu solicitud, pero quedó confirmada. Un ejecutivo la revisará.")
 
-            try:
-                enviar_correo(u)
-            except Exception as e:
-                print("❌ Error al enviar correo:", e)
-                # Opcional: avisar al usuario si quieres
-                # enviar_texto(to, "⚠️ No pudimos enviar el correo automático, pero la solicitud quedó registrada.")
+            # 3️⃣ Envío de correo (AQUÍ VA EL CÓDIGO QUE PREGUNTAS)
+            correo_ok = enviar_correo(u)
 
+            if not correo_ok:
+                enviar_texto(
+                    to,
+                    "⚠️ Tu solicitud fue confirmada, pero el correo interno no pudo enviarse.\n"
+                    "Un ejecutivo revisará tu cotización igualmente."
+                )
+
+            # 4️⃣ Cerrar sesión del usuario
             usuarios.pop(to, None)
             return
 
         if texto_lower == "confirmar_no":
-            return enviar_texto(to, "Para corregir, escribe por ej: *cambiar correo*")
+            return enviar_texto(
+                to,
+                "Para corregir, escribe por ej: *cambiar correo*"
+            )
 
-        # Si llega algo raro en confirmación
-        return enviar_texto(to, "Por favor confirma con los botones: *Sí* o *Corregir*.")
+        return enviar_texto(
+            to,
+            "Por favor confirma usando los botones: *Sí* o *Corregir*."
+        )
 
 
 # -------- Webhook --------
