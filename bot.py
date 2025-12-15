@@ -93,13 +93,6 @@ def enviar_botones(to, cuerpo, botones):
         return None
 
 # -------- Email --------
-def enviar_correo(usuario):
-    print("📨 INTENTANDO ENVIAR CORREO SENDGRID")
-    print("FROM_EMAIL:", FROM_EMAIL)
-    print("NOTIFY_EMAIL:", NOTIFY_EMAIL)
-
-    SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-    print("SENDGRID_API_KEY EXISTE:", bool(SENDGRID_API_KEY))
 
 def enviar_correo(usuario):
     try:
@@ -375,50 +368,6 @@ def procesar_flujo(to, texto, texto_lower):
         )
 
 
-            # 2️⃣ Guardar en Google Sheets (ya confirmado que funciona)
-            try:
-                sheet.append_row([
-                    datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
-                    u.get("Nombre", ""),
-                    u.get("Correo", ""),
-                    u.get("Pasajeros", ""),
-                    u.get("Origen", ""),
-                    u.get("Destino", ""),
-                    u.get("Hora Ida", ""),
-                    u.get("Hora Regreso", ""),
-                    u.get("Telefono", ""),
-                    u.get("Fecha Viaje", "")
-                ])
-            except Exception as e:
-                print("❌ Error al guardar en Google Sheets:", e)
-
-            # 3️⃣ Envío de correo (AQUÍ VA EL CÓDIGO QUE PREGUNTAS)
-            correo_ok = enviar_correo(u)
-            print("✅ USUARIO CONFIRMÓ COTIZACIÓN")
-
-
-            if not correo_ok:
-                enviar_texto(
-                    to,
-                    "⚠️ Tu solicitud fue confirmada, pero el correo interno no pudo enviarse.\n"
-                    "Un ejecutivo revisará tu cotización igualmente."
-                )
-
-            # 4️⃣ Cerrar sesión del usuario
-            usuarios.pop(to, None)
-            return
-
-        if texto_lower == "confirmar_no":
-            return enviar_texto(
-                to,
-                "Para corregir, escribe por ej: *cambiar correo*"
-            )
-
-        return enviar_texto(
-            to,
-            "Por favor confirma usando los botones: *Sí* o *Corregir*."
-        )
-
 
 # -------- Webhook --------
 @app.route("/webhook", methods=["GET", "POST"])
@@ -444,10 +393,11 @@ def webhook():
 
         texto_lower = texto.lower()
 
-     usuarios[wa_id] = {
-         "estado": None,
-         "modo_correccion": False
-     }
+        if wa_id not in usuarios:
+            usuarios[wa_id] = {
+                "estado": None,
+                "modo_correccion": False
+            }
 
 
         if texto_lower in ["hola", "menú", "menu", "inicio"]:
