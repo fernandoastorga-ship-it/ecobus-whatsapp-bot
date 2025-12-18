@@ -42,7 +42,8 @@ def guardar_en_sheet(usuario):
             usuario.get("Destino", ""),
             usuario.get("Hora Ida", ""),
             usuario.get("Hora Regreso", ""),
-            usuario.get("Telefono", "")
+            usuario.get("Telefono", ""),
+            usuraio.get("Fecha Viaje", "")
         ]
 
         sheet.append_row(fila, value_input_option="USER_ENTERED")
@@ -453,7 +454,7 @@ def webhook():
                 usuarios[wa_id]["estado"] = "nombre"
                 enviar_texto(wa_id, "👤 Nombre de la persona/empresa solicitante")
             elif texto_lower == "ejecutivo":
-                enviar_texto(wa_id, "📞 +56 9 9871 1060")
+                enviar_texto(wa_id, "Perfecto, Fabian será el ejecutivo encargado de responder tus dudas 📞 +56 9 9871 1060")
             else:
                 menu_principal(wa_id)
         else:
