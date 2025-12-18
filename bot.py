@@ -31,6 +31,29 @@ sheet = client.open_by_key(GOOGLE_SHEETS_ID).sheet1
 
 usuarios = {}
 
+def guardar_en_sheet(usuario):
+    try:
+        fila = [
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            usuario.get("Nombre", ""),
+            usuario.get("Correo", ""),
+            usuario.get("Pasajeros", ""),
+            usuario.get("Origen", ""),
+            usuario.get("Destino", ""),
+            usuario.get("Hora Ida", ""),
+            usuario.get("Hora Regreso", ""),
+            usuario.get("Telefono", "")
+        ]
+
+        sheet.append_row(fila, value_input_option="USER_ENTERED")
+        print("✅ Guardado en Google Sheets OK:", fila)
+        return True
+
+    except Exception as e:
+        print("❌ Error guardando en Google Sheets:", e)
+        return False
+
+
 # -------- Validaciones --------
 def email_valido(c):
     return "@" in c and "." in c.split("@")[-1]
@@ -341,40 +364,51 @@ def procesar_flujo(to, texto, texto_lower):
         return enviar_confirmacion(to)
 
     # -------- CONFIRMAR --------
-    if estado == "confirmar":
-        if texto_lower == "confirmar_si":
-            print("✅ USUARIO CONFIRMÓ COTIZACIÓN")
+if estado == "confirmar":
+    if texto_lower == "confirmar_si":
+        print("✅ USUARIO CONFIRMÓ COTIZACIÓN")
 
+        # 1️⃣ Guardar en Google Sheets
+        sheet_ok = guardar_en_sheet(u)
+        if not sheet_ok:
             enviar_texto(
                 to,
-                "🎉 ¡Solicitud confirmada!\n"
-                "Estamos creando tu cotización 🚍\n"
-                "📧 Revisa tu correo ✉️\n"
-                "¡Gracias por preferir Ecobus!"
+                "⚠️ Tu solicitud fue confirmada, pero hubo un problema al registrarla. "
+                "De todas formas la estamos procesando."
             )
 
+        # 2️⃣ Mensaje final al usuario
+        enviar_texto(
+            to,
+            "🎉 ¡Solicitud confirmada!\n"
+            "Estamos creando tu cotización 🚍\n"
+            "📧 Te contactaremos a la brevedad.\n"
+            "¡Gracias por preferir Ecobus!"
+        )
 
-            correo_ok = enviar_correo(u)
-
-            if not correo_ok:
-                enviar_texto(
-                    to,
-                    "⚠️ La solicitud quedó confirmada, pero hubo un problema enviando el correo interno."
-                )
-
-            usuarios.pop(to, None)
-            return
-
-        if texto_lower == "confirmar_no":
-            return enviar_texto(
+        # 3️⃣ Enviar correo interno
+        correo_ok = enviar_correo(u)
+        if not correo_ok:
+            enviar_texto(
                 to,
-                "Para corregir, escribe por ejemplo: *cambiar correo*"
+                "⚠️ La solicitud quedó confirmada, pero hubo un problema enviando el correo interno."
             )
 
+        # 4️⃣ Cerrar conversación
+        usuarios.pop(to, None)
+        return
+
+    if texto_lower == "confirmar_no":
         return enviar_texto(
             to,
-            "Por favor confirma usando los botones: *Sí* o *Corregir*."
+            "Para corregir, escribe por ejemplo: *cambiar correo*"
         )
+
+    return enviar_texto(
+        to,
+        "Por favor confirma usando los botones: *Sí* o *Corregir*."
+    )
+
 
 
 
