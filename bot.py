@@ -1,5 +1,6 @@
 import os
 import requests
+import uuid
 from flask import Flask, request, jsonify
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -34,16 +35,19 @@ usuarios = {}
 def guardar_en_sheet(usuario):
     try:
         fila = [
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Timestamp
+            usuario.get("cotizacion_id", ""),              # ID Cotización
             usuario.get("Nombre", ""),
             usuario.get("Correo", ""),
+            usuario.get("Fecha Viaje", ""),
             usuario.get("Pasajeros", ""),
             usuario.get("Origen", ""),
             usuario.get("Destino", ""),
             usuario.get("Hora Ida", ""),
             usuario.get("Hora Regreso", ""),
             usuario.get("Telefono", ""),
-            usuraio.get("Fecha Viaje", "")
+            "ENVIADA",                                     # Estado
+            ""                                             # Fecha Respuesta
         ]
 
         sheet.append_row(fila, value_input_option="USER_ENTERED")
@@ -116,8 +120,8 @@ def enviar_botones(to, cuerpo, botones):
         print("❌ Exception WhatsApp enviar_botones:", e)
         return None
 
-# -------- Email --------
 
+# -------- Email --------
 def enviar_correo(usuario):
     try:
         SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
@@ -125,6 +129,13 @@ def enviar_correo(usuario):
             print("❌ Falta SENDGRID_API_KEY en variables de entorno")
             return False
 
+        # 🔗 Link de seguimiento (usa tu dominio real de Render)
+        link_seguimiento = (
+            f"https://ecobus-whatsapp-bot.onrender.com/seguimiento"
+            f"?id={usuario.get('cotizacion_id','')}"
+        )
+
+        # 📧 Cuerpo del correo
         cuerpo = (
             "Nueva solicitud de cotización - Ecobus\n\n"
             f"Nombre: {usuario.get('Nombre','')}\n"
@@ -136,6 +147,9 @@ def enviar_correo(usuario):
             f"Hora ida: {usuario.get('Hora Ida','')}\n"
             f"Hora regreso: {usuario.get('Hora Regreso','')}\n"
             f"Teléfono: {usuario.get('Telefono','')}\n"
+            "\n----------------------------------\n"
+            "👉 Marcar cotización como RESPONDIDA:\n"
+            f"{link_seguimiento}\n"
         )
 
         url = "https://api.sendgrid.com/v3/mail/send"
@@ -365,13 +379,17 @@ def procesar_flujo(to, texto, texto_lower):
         return enviar_confirmacion(to)
 
 
+
     # -------- CONFIRMAR --------
     if estado == "confirmar":
 
         if texto_lower == "confirmar_si":
             print("✅ USUARIO CONFIRMÓ COTIZACIÓN")
 
-            # 1️⃣ Guardar en Google Sheets
+            # 1️⃣ Generar ID único de cotización
+            u["cotizacion_id"] = str(uuid.uuid4())[:8].upper()
+
+            # 2️⃣ Guardar en Google Sheets
             sheet_ok = guardar_en_sheet(u)
             if not sheet_ok:
                 enviar_texto(
@@ -380,7 +398,7 @@ def procesar_flujo(to, texto, texto_lower):
                     "De todas formas la estamos procesando."
                 )
 
-            # 2️⃣ Mensaje final al usuario
+            # 3️⃣ Mensaje final al usuario
             enviar_texto(
                 to,
                 "🎉 ¡Solicitud confirmada!\n"
@@ -389,7 +407,7 @@ def procesar_flujo(to, texto, texto_lower):
                 "¡Gracias por preferir Ecobus!"
             )
 
-            # 3️⃣ Enviar correo interno
+            # 4️⃣ Correo interno (ya funcionaba)
             correo_ok = enviar_correo(u)
             if not correo_ok:
                 enviar_texto(
@@ -397,7 +415,7 @@ def procesar_flujo(to, texto, texto_lower):
                     "⚠️ La solicitud quedó confirmada, pero hubo un problema enviando el correo interno."
                 )
 
-            # 4️⃣ Cerrar sesión del usuario
+            # 5️⃣ Cerrar conversación
             usuarios.pop(to, None)
             return
 
@@ -476,6 +494,32 @@ def test_mail():
         "Telefono": "+56912345678"
     })
     return "OK" if ok else "ERROR"
+
+@app.route("/seguimiento")
+def seguimiento():
+    cid = request.args.get("id")
+
+    if not cid:
+        return "ID inválido", 400
+
+    try:
+        registros = sheet.get_all_records()
+
+        for i, row in enumerate(registros, start=2):  # empieza en fila 2
+            if row.get("ID Cotización") == cid:
+                sheet.update_cell(i, 12, "RESPONDIDA")  # Estado
+                sheet.update_cell(
+                    i, 13,
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                )
+                return "✅ Cotización marcada como RESPONDIDA"
+
+        return "❌ Cotización no encontrada", 404
+
+    except Exception as e:
+        print("❌ Error en seguimiento:", e)
+        return "Error interno", 500
+
 
 @app.route("/")
 def home():
