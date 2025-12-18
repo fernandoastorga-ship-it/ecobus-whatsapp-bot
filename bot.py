@@ -363,53 +363,53 @@ def procesar_flujo(to, texto, texto_lower):
         mostrar_resumen(to)
         return enviar_confirmacion(to)
 
+
     # -------- CONFIRMAR --------
-if estado == "confirmar":
-    if texto_lower == "confirmar_si":
-        print("✅ USUARIO CONFIRMÓ COTIZACIÓN")
+    if estado == "confirmar":
 
-        # 1️⃣ Guardar en Google Sheets
-        sheet_ok = guardar_en_sheet(u)
-        if not sheet_ok:
+        if texto_lower == "confirmar_si":
+            print("✅ USUARIO CONFIRMÓ COTIZACIÓN")
+
+            # 1️⃣ Guardar en Google Sheets
+            sheet_ok = guardar_en_sheet(u)
+            if not sheet_ok:
+                enviar_texto(
+                    to,
+                    "⚠️ Tu solicitud fue confirmada, pero hubo un problema al registrarla. "
+                    "De todas formas la estamos procesando."
+                )
+
+            # 2️⃣ Mensaje final al usuario
             enviar_texto(
                 to,
-                "⚠️ Tu solicitud fue confirmada, pero hubo un problema al registrarla. "
-                "De todas formas la estamos procesando."
+                "🎉 ¡Solicitud confirmada!\n"
+                "Estamos creando tu cotización 🚍\n"
+                "📧 Te contactaremos a la brevedad.\n"
+                "¡Gracias por preferir Ecobus!"
             )
 
-        # 2️⃣ Mensaje final al usuario
-        enviar_texto(
-            to,
-            "🎉 ¡Solicitud confirmada!\n"
-            "Estamos creando tu cotización 🚍\n"
-            "📧 Te contactaremos a la brevedad.\n"
-            "¡Gracias por preferir Ecobus!"
-        )
+            # 3️⃣ Enviar correo interno
+            correo_ok = enviar_correo(u)
+            if not correo_ok:
+                enviar_texto(
+                    to,
+                    "⚠️ La solicitud quedó confirmada, pero hubo un problema enviando el correo interno."
+                )
 
-        # 3️⃣ Enviar correo interno
-        correo_ok = enviar_correo(u)
-        if not correo_ok:
-            enviar_texto(
+            # 4️⃣ Cerrar sesión del usuario
+            usuarios.pop(to, None)
+            return
+
+        if texto_lower == "confirmar_no":
+            return enviar_texto(
                 to,
-                "⚠️ La solicitud quedó confirmada, pero hubo un problema enviando el correo interno."
+                "Para corregir, escribe por ejemplo: *cambiar correo*"
             )
 
-        # 4️⃣ Cerrar conversación
-        usuarios.pop(to, None)
-        return
-
-    if texto_lower == "confirmar_no":
         return enviar_texto(
             to,
-            "Para corregir, escribe por ejemplo: *cambiar correo*"
+            "Por favor confirma usando los botones: *Sí* o *Corregir*."
         )
-
-    return enviar_texto(
-        to,
-        "Por favor confirma usando los botones: *Sí* o *Corregir*."
-    )
-
-
 
 
 # -------- Webhook --------
