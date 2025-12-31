@@ -484,7 +484,7 @@ elif tipo == "location":
         texto = ""
 
 else:
-    # Otros tipos (image, document, audio, etc.)
+    # Otros tipos de mensaje (image, document, audio, etc.)
     texto = ""
 
 
