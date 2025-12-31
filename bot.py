@@ -241,11 +241,9 @@ def corregir_campos(to, texto_lower):
 
     return False
 
-# -------- Flujo principal --------
 def procesar_flujo(to, texto, texto_lower):
     u = usuarios[to]
 
-    # Si el usuario escribió "cambiar X"
     if corregir_campos(to, texto_lower):
         return
 
@@ -254,77 +252,40 @@ def procesar_flujo(to, texto, texto_lower):
     # -------- NOMBRE --------
     if estado == "nombre":
         u["Nombre"] = texto
-
-        if u.get("modo_correccion"):
-            u["modo_correccion"] = False
-            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
-            mostrar_resumen(to)
-            return enviar_confirmacion(to)
-
         u["estado"] = "correo"
         return enviar_texto(to, "📧 ¿Cuál es su correo?")
 
     # -------- CORREO --------
-if estado == "correo":
-    if not email_valido(texto):
-        return enviar_texto(
-            to,
-            "⚠️ Correo inválido.\n"
-            "Por favor ingresa **solo el correo**, en una sola línea.\n"
-            "Ejemplo: nombre@empresa.cl"
-        )
-
+    if estado == "correo":
+        if not email_valido(texto):
+            return enviar_texto(
+                to,
+                "⚠️ Correo inválido.\n"
+                "Ingresa solo el correo, una línea.\n"
+                "Ej: nombre@empresa.cl"
+            )
 
         u["Correo"] = texto
-
-        if u.get("modo_correccion"):
-            u["modo_correccion"] = False
-            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
-            mostrar_resumen(to)
-            return enviar_confirmacion(to)
-
         u["estado"] = "pasajeros"
         return enviar_texto(to, "👥 ¿Cuántos pasajeros?")
 
     # -------- PASAJEROS --------
+    if estado == "pasajeros":
+        if not pasajeros_validos(texto):
+            return enviar_texto(to, "⚠️ Ingresa solo un número. Ej: 12")
 
-if estado == "pasajeros":
-
-    if not pasajeros_validos(texto):
-        return enviar_texto(
-            to,
-            "⚠️ Cantidad inválida.\n"
-            "Por favor ingresa **solo un número**.\n"
-            "Ejemplo: 12"
-        )
-
-    u["Pasajeros"] = int(texto)  # guardamos número limpio
-
-    if u.get("modo_correccion"):
-        u["modo_correccion"] = False
-        u["estado"] = "confirmar"
-        mostrar_resumen(to)
-        return enviar_confirmacion(to)
-
-    u["estado"] = "fecha"
-    return enviar_texto(to, "📅 Fecha DD-MM-AAAA")
-
+        u["Pasajeros"] = int(texto)
+        u["estado"] = "fecha"
+        return enviar_texto(to, "📅 Fecha DD-MM-AAAA")
 
     # -------- FECHA --------
     if estado == "fecha":
         try:
             f = datetime.strptime(texto, "%d-%m-%Y").date()
             if f < date.today():
-                return enviar_texto(to, "Fecha futura por favor ⏳")
+                return enviar_texto(to, "Fecha futura por favor")
 
             u["Fecha Viaje"] = f.strftime("%d-%m-%Y")
-
-            if u.get("modo_correccion"):
-                u["modo_correccion"] = False
-                u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
-                mostrar_resumen(to)
-                return enviar_confirmacion(to)
-
             u["estado"] = "origen"
             return enviar_texto(to, "📍 ¿Desde dónde salen?")
         except:
@@ -333,122 +294,41 @@ if estado == "pasajeros":
     # -------- ORIGEN --------
     if estado == "origen":
         u["Origen"] = texto
-
-        if u.get("modo_correccion"):
-            u["modo_correccion"] = False
-            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
-            mostrar_resumen(to)
-            return enviar_confirmacion(to)
-
         u["estado"] = "destino"
-        return enviar_texto(to, "🎯 ¿Hacia dónde se dirigen?")
+        return enviar_texto(to, "🎯 ¿Destino?")
 
     # -------- DESTINO --------
     if estado == "destino":
         u["Destino"] = texto
-
-        if u.get("modo_correccion"):
-            u["modo_correccion"] = False
-            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
-            mostrar_resumen(to)
-            return enviar_confirmacion(to)
-
         u["estado"] = "ida"
-        return enviar_texto(to, "🕒 ¿A qué hora desean salir? (HH:MM)")
+        return enviar_texto(to, "🕒 Hora salida HH:MM")
 
-    # -------- HORA IDA --------
+    # -------- IDA --------
     if estado == "ida":
-        if not hora_valida(texto):
-            return enviar_texto(to, "Ej: 08:30 ⏱️")
-
         u["Hora Ida"] = texto
-
-        if u.get("modo_correccion"):
-            u["modo_correccion"] = False
-            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
-            mostrar_resumen(to)
-            return enviar_confirmacion(to)
-
         u["estado"] = "regreso"
-        return enviar_texto(to, "🕒 ¿A qué hora desean regresar?")
+        return enviar_texto(to, "🕒 Hora regreso HH:MM")
 
-    # -------- HORA REGRESO --------
+    # -------- REGRESO --------
     if estado == "regreso":
-        if not hora_valida(texto):
-            return enviar_texto(to, "Ej: 18:00 ⏱️")
-
         u["Hora Regreso"] = texto
-
-        if u.get("modo_correccion"):
-            u["modo_correccion"] = False
-            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
-            mostrar_resumen(to)
-            return enviar_confirmacion(to)
-
         u["estado"] = "telefono"
-        return enviar_texto(to, "📱 ¿Cuál es su número de teléfono?")
+        return enviar_texto(to, "📱 Teléfono")
 
     # -------- TELÉFONO --------
     if estado == "telefono":
-        if not telefono_valido(texto):
-            return enviar_texto(to, "Número inválido ⚠️ Ej: +56912345678")
-
         u["Telefono"] = texto
         u["estado"] = "confirmar"
         mostrar_resumen(to)
         return enviar_confirmacion(to)
 
-
-
     # -------- CONFIRMAR --------
-    if estado == "confirmar":
-
-        if texto_lower == "confirmar_si":
-            print("✅ USUARIO CONFIRMÓ COTIZACIÓN")
-
-            # 1️⃣ Generar ID único de cotización
-            u["cotizacion_id"] = str(uuid.uuid4())[:8].upper()
-
-            # 2️⃣ Guardar en Google Sheets
-            sheet_ok = guardar_en_sheet(u)
-            if not sheet_ok:
-                enviar_texto(
-                    to,
-                    "⚠️ Tu solicitud fue confirmada, pero hubo un problema al registrarla. "
-                    "De todas formas la estamos procesando."
-                )
-
-            # 3️⃣ Mensaje final al usuario
-            enviar_texto(
-                to,
-                "🎉 ¡Solicitud confirmada!\n"
-                "Estamos creando tu cotización 🚍\n"
-                "📧 Te contactaremos a la brevedad.\n"
-                "¡Gracias por preferir Ecobus!"
-            )
-
-            # 4️⃣ Correo interno (ya funcionaba)
-            correo_ok = enviar_correo(u)
-            if not correo_ok:
-                enviar_texto(
-                    to,
-                    "⚠️ La solicitud quedó confirmada, pero hubo un problema enviando el correo interno."
-                )
-
-            # 5️⃣ Cerrar conversación
-            usuarios.pop(to, None)
-            return
-
-        if texto_lower == "confirmar_no":
-            return enviar_texto(
-                to,
-                "Para corregir, escribe por ejemplo: *cambiar correo*"
-            )
-
-        return enviar_texto(
-            to,
-            "Por favor confirma usando los botones: *Sí* o *Corregir*."
-        )
+    if estado == "confirmar" and texto_lower == "confirmar_si":
+        u["cotizacion_id"] = str(uuid.uuid4())[:8].upper()
+        guardar_en_sheet(u)
+        enviar_correo(u)
+        enviar_texto(to, "✅ Cotización enviada. Gracias.")
+        usuarios.pop(to, None)
 
 
 # -------- Webhook --------
@@ -463,66 +343,36 @@ def webhook():
     entry = data.get("entry", [{}])[0].get("changes", [{}])[0].get("value", {})
 
     mensajes = entry.get("messages", [])
-    for m in mensajes:
-        wa_id = m.get("from")
+for m in mensajes:
+    wa_id = m.get("from")
+    tipo = m.get("type", "")
+    texto = ""
 
-tipo = m.get("type", "")
-texto = ""
-
-if tipo == "text":
-    texto = m["text"]["body"]
-
-elif tipo == "interactive":
-    texto = m["interactive"]["button_reply"]["id"]
-
-elif tipo == "location":
-    lat = m["location"].get("latitude")
-    lon = m["location"].get("longitude")
-    if lat is not None and lon is not None:
+    if tipo == "text":
+        texto = m["text"]["body"]
+    elif tipo == "interactive":
+        texto = m["interactive"]["button_reply"]["id"]
+    elif tipo == "location":
+        lat = m["location"]["latitude"]
+        lon = m["location"]["longitude"]
         texto = f"{lat},{lon}"
     else:
         texto = ""
 
-else:
-    # Otros tipos de mensaje (image, document, audio, etc.)
-    texto = ""
+    texto_lower = texto.lower()
 
+    if wa_id not in usuarios:
+        usuarios[wa_id] = {"estado": None}
 
-else:
-    # Cualquier otro tipo (document, image, audio, etc.)
-    texto = ""
-
-
-elif tipo == "location":
-    lat = m["location"]["latitude"]
-    lon = m["location"]["longitude"]
-    texto = f"{lat},{lon}"
-
-
-        texto_lower = texto.lower()
-
-        if wa_id not in usuarios:
-            usuarios[wa_id] = {
-                "estado": None,
-                "modo_correccion": False
-            }
-
-
-        if texto_lower in ["hola", "menú", "menu", "inicio"]:
-            usuarios[wa_id]["estado"] = None
-            menu_principal(wa_id)
-            continue
-
-        if usuarios[wa_id]["estado"] is None:
-            if texto_lower == "cotizar":
-                usuarios[wa_id]["estado"] = "nombre"
-                enviar_texto(wa_id, "👤 Nombre de la persona/empresa solicitante")
-            elif texto_lower == "ejecutivo":
-                enviar_texto(wa_id, "Perfecto, Fabian será el ejecutivo encargado de responder tus dudas 📞 +56 9 9871 1060")
-            else:
-                menu_principal(wa_id)
+    if usuarios[wa_id]["estado"] is None:
+        if texto_lower == "cotizar":
+            usuarios[wa_id]["estado"] = "nombre"
+            enviar_texto(wa_id, "👤 Nombre solicitante")
         else:
-            procesar_flujo(wa_id, texto, texto_lower)
+            menu_principal(wa_id)
+    else:
+        procesar_flujo(wa_id, texto, texto_lower)
+
 
     return jsonify({"status": "ok"}), 200
 
