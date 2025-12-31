@@ -61,18 +61,21 @@ def guardar_en_sheet(usuario):
 
 # -------- Validaciones --------
 def email_valido(c):
-    return "@" in c and "." in c.split("@")[-1]
+    # Quitar espacios al inicio y final
+    c = c.strip()
 
-def hora_valida(h):
-    try:
-        datetime.strptime(h, "%H:%M")
-        return True
-    except:
+    # No permitir saltos de línea ni espacios internos
+    if "\n" in c or " " in c:
         return False
 
-def telefono_valido(t):
-    t = t.replace(" ", "")
-    return bool(re.match(r"^\+?56?9\d{8}$", t))
+    # Regex simple y segura para email
+    patron = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+    return bool(re.match(patron, c))
+
+def pasajeros_validos(p):
+    p = p.strip()
+    return p.isdigit() and int(p) > 0
+
 
 # -------- WhatsApp --------
 def enviar_texto(to, msg):
@@ -262,9 +265,15 @@ def procesar_flujo(to, texto, texto_lower):
         return enviar_texto(to, "📧 ¿Cuál es su correo?")
 
     # -------- CORREO --------
-    if estado == "correo":
-        if not email_valido(texto):
-            return enviar_texto(to, "Correo inválido ⚠️")
+if estado == "correo":
+    if not email_valido(texto):
+        return enviar_texto(
+            to,
+            "⚠️ Correo inválido.\n"
+            "Por favor ingresa **solo el correo**, en una sola línea.\n"
+            "Ejemplo: nombre@empresa.cl"
+        )
+
 
         u["Correo"] = texto
 
@@ -278,17 +287,28 @@ def procesar_flujo(to, texto, texto_lower):
         return enviar_texto(to, "👥 ¿Cuántos pasajeros?")
 
     # -------- PASAJEROS --------
-    if estado == "pasajeros":
-        u["Pasajeros"] = texto
 
-        if u.get("modo_correccion"):
-            u["modo_correccion"] = False
-            u["estado"] = "confirmar"   # 👈 LÍNEA CLAVE
-            mostrar_resumen(to)
-            return enviar_confirmacion(to)
+if estado == "pasajeros":
 
-        u["estado"] = "fecha"
-        return enviar_texto(to, "📅 Fecha DD-MM-AAAA")
+    if not pasajeros_validos(texto):
+        return enviar_texto(
+            to,
+            "⚠️ Cantidad inválida.\n"
+            "Por favor ingresa **solo un número**.\n"
+            "Ejemplo: 12"
+        )
+
+    u["Pasajeros"] = int(texto)  # guardamos número limpio
+
+    if u.get("modo_correccion"):
+        u["modo_correccion"] = False
+        u["estado"] = "confirmar"
+        mostrar_resumen(to)
+        return enviar_confirmacion(to)
+
+    u["estado"] = "fecha"
+    return enviar_texto(to, "📅 Fecha DD-MM-AAAA")
+
 
     # -------- FECHA --------
     if estado == "fecha":
@@ -445,13 +465,34 @@ def webhook():
     mensajes = entry.get("messages", [])
     for m in mensajes:
         wa_id = m.get("from")
-        tipo = m.get("type", "")
+
+tipo = m.get("type", "")
+texto = ""
+
+if tipo == "text":
+    texto = m["text"]["body"]
+
+elif tipo == "interactive":
+    texto = m["interactive"]["button_reply"]["id"]
+
+elif tipo == "location":
+    lat = m["location"].get("latitude")
+    lon = m["location"].get("longitude")
+    if lat is not None and lon is not None:
+        texto = f"{lat},{lon}"
+    else:
         texto = ""
 
-        if tipo == "text":
-            texto = m["text"]["body"]
-        elif tipo == "interactive":
-            texto = m["interactive"]["button_reply"]["id"]
+else:
+    # Cualquier otro tipo (document, image, audio, etc.)
+    texto = ""
+
+
+elif tipo == "location":
+    lat = m["location"]["latitude"]
+    lon = m["location"]["longitude"]
+    texto = f"{lat},{lon}"
+
 
         texto_lower = texto.lower()
 
