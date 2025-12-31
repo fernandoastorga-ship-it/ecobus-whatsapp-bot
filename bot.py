@@ -332,6 +332,7 @@ def procesar_flujo(to, texto, texto_lower):
 
 
 # -------- Webhook --------
+# -------- Webhook --------
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
     if request.method == "GET":
@@ -341,82 +342,53 @@ def webhook():
 
     data = request.get_json()
     entry = data.get("entry", [{}])[0].get("changes", [{}])[0].get("value", {})
-
     mensajes = entry.get("messages", [])
-for m in mensajes:
-    wa_id = m.get("from")
-    tipo = m.get("type", "")
-    texto = ""
 
-    if tipo == "text":
-        texto = m["text"]["body"]
-    elif tipo == "interactive":
-        texto = m["interactive"]["button_reply"]["id"]
-    elif tipo == "location":
-        lat = m["location"]["latitude"]
-        lon = m["location"]["longitude"]
-        texto = f"{lat},{lon}"
-    else:
+    for m in mensajes:
+        wa_id = m.get("from")
+        tipo = m.get("type", "")
         texto = ""
 
-    texto_lower = texto.lower()
+        if tipo == "text":
+            texto = m["text"]["body"]
 
-    if wa_id not in usuarios:
-        usuarios[wa_id] = {"estado": None}
+        elif tipo == "interactive":
+            texto = m["interactive"]["button_reply"]["id"]
 
-    if usuarios[wa_id]["estado"] is None:
-        if texto_lower == "cotizar":
-            usuarios[wa_id]["estado"] = "nombre"
-            enviar_texto(wa_id, "👤 Nombre solicitante")
+        elif tipo == "location":
+            lat = m["location"]["latitude"]
+            lon = m["location"]["longitude"]
+            texto = f"{lat},{lon}"
+
         else:
+            texto = ""
+
+        texto_lower = texto.lower()
+
+        if wa_id not in usuarios:
+            usuarios[wa_id] = {
+                "estado": None,
+                "modo_correccion": False
+            }
+
+        if texto_lower in ["hola", "menú", "menu", "inicio"]:
+            usuarios[wa_id]["estado"] = None
             menu_principal(wa_id)
-    else:
-        procesar_flujo(wa_id, texto, texto_lower)
+            continue
 
-
-    return jsonify({"status": "ok"}), 200
-
-@app.route("/test-mail")
-def test_mail():
-    ok = enviar_correo({
-        "Nombre": "Test",
-        "Correo": "test@test.cl",
-        "Fecha Viaje": "01-01-2026",
-        "Pasajeros": "10",
-        "Origen": "Santiago",
-        "Destino": "Valparaíso",
-        "Hora Ida": "08:00",
-        "Hora Regreso": "18:00",
-        "Telefono": "+56912345678"
-    })
-    return "OK" if ok else "ERROR"
-
-@app.route("/seguimiento")
-def seguimiento():
-    cid = request.args.get("id")
-
-    if not cid:
-        return "ID inválido", 400
-
-    try:
-        registros = sheet.get_all_records()
-
-        for i, row in enumerate(registros, start=2):  # empieza en fila 2
-            if row.get("ID Cotización") == cid:
-                sheet.update_cell(i, 12, "RESPONDIDA")  # Estado
-                sheet.update_cell(
-                    i, 13,
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if usuarios[wa_id]["estado"] is None:
+            if texto_lower == "cotizar":
+                usuarios[wa_id]["estado"] = "nombre"
+                enviar_texto(wa_id, "👤 Nombre de la persona/empresa solicitante")
+            elif texto_lower == "ejecutivo":
+                enviar_texto(
+                    wa_id,
+                    "Perfecto, Fabian será el ejecutivo encargado 📞 +56 9 9871 1060"
                 )
-                return "✅ Cotización marcada como RESPONDIDA"
+            else:
+                menu_principal(wa_id)
+        else:
+            procesar_flujo(wa_id, texto, texto_lower)
 
-        return "❌ Cotización no encontrada", 404
-
-    except Exception as e:
-        print("❌ Error en seguimiento:", e)
-        return "Error interno", 500
-
-
-@app.route("/")
-def home():
-    return "🤖 Bot Ecobus Activo", 200
+    # 🔴 ESTE return DEBE QUEDAR DENTRO DE LA FUNCIÓN
+    return jsonify({"status": "ok"}), 200
