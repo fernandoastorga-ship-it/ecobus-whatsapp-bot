@@ -8,6 +8,8 @@ from datetime import datetime, date
 from pricing_engine import calcular_precio
 from maps import geocode, route
 import re
+import smtplib
+from email.mime.text import MIMEText
 
 app = Flask(__name__)
 
@@ -16,17 +18,17 @@ WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 GOOGLE_SHEETS_ID = os.getenv("GOOGLE_SHEETS_ID")
 
-FROM_EMAIL = os.getenv("FROM_EMAIL")
-NOTIFY_EMAIL = os.getenv("NOTIFY_EMAIL", "f.astorgasanmartin@gmail.com")
+SMTP_HOST = os.getenv("SMTP_HOST")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER")
+SMTP_PASS = os.getenv("SMTP_PASS")
+FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USER)
+NOTIFY_EMAIL = os.getenv("NOTIFY_EMAIL", "fabian@ecobus.cl")
 
 # GOOGLE SHEETS
-scope = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive",
-]
-credentials = ServiceAccountCredentials.from_json_keyfile_name(
-    "credentials.json", scope
-)
+scope = ["https://spreadsheets.google.com/feeds",
+         "https://www.googleapis.com/auth/drive"]
+credentials = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 client = gspread.authorize(credentials)
 sheet = client.open_by_key(GOOGLE_SHEETS_ID).sheet1
 
@@ -58,6 +60,7 @@ def guardar_en_sheet(usuario):
         print("❌ Error guardando en Google Sheets:", e)
         return False
 
+
 # -------- Validaciones --------
 def email_valido(c):
     # Quitar espacios al inicio y final
@@ -71,19 +74,26 @@ def email_valido(c):
     patron = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
     return bool(re.match(patron, c))
 
-
 def pasajeros_validos(p):
-    return p.strip().isdigit() and int(p) > 0
+    p = p.strip()
+    return p.isdigit() and int(p) > 0
 
 
+# -------- WhatsApp --------
 def enviar_texto(to, msg):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}",
+               "Content-Type": "application/json"}
     data = {"messaging_product": "whatsapp", "to": to, "text": {"body": msg}}
-    requests.post(url, headers=headers, json=data)
+
+    try:
+        r = requests.post(url, headers=headers, json=data, timeout=10)
+        if r.status_code >= 300:
+            print("❌ Error WhatsApp enviar_texto:", r.status_code, r.text)
+        return r
+    except Exception as e:
+        print("❌ Exception WhatsApp enviar_texto:", e)
+        return None
 
 
 def enviar_botones(to, cuerpo, botones):
@@ -115,6 +125,72 @@ def enviar_botones(to, cuerpo, botones):
         print("❌ Exception WhatsApp enviar_botones:", e)
         return None
 
+
+# -------- Email --------
+def enviar_correo(usuario):
+    try:
+        SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+        if not SENDGRID_API_KEY:
+            print("❌ Falta SENDGRID_API_KEY en variables de entorno")
+            return False
+
+        # 🔗 Link de seguimiento (usa tu dominio real de Render)
+        link_seguimiento = (
+            f"https://ecobus-whatsapp-bot.onrender.com/seguimiento"
+            f"?id={usuario.get('cotizacion_id','')}"
+        )
+
+        # 📧 Cuerpo del correo
+        cuerpo = (
+            "Nueva solicitud de cotización - Ecobus\n\n"
+            f"Nombre: {usuario.get('Nombre','')}\n"
+            f"Correo: {usuario.get('Correo','')}\n"
+            f"Fecha viaje: {usuario.get('Fecha Viaje','')}\n"
+            f"Pasajeros: {usuario.get('Pasajeros','')}\n"
+            f"Origen: {usuario.get('Origen','')}\n"
+            f"Destino: {usuario.get('Destino','')}\n"
+            f"Hora ida: {usuario.get('Hora Ida','')}\n"
+            f"Hora regreso: {usuario.get('Hora Regreso','')}\n"
+            f"Teléfono: {usuario.get('Telefono','')}\n"
+            "\n----------------------------------\n"
+            "👉 Marcar cotización como RESPONDIDA:\n"
+            f"{link_seguimiento}\n"
+        )
+
+        url = "https://api.sendgrid.com/v3/mail/send"
+        headers = {
+            "Authorization": f"Bearer {SENDGRID_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "personalizations": [
+                {
+                    "to": [{"email": NOTIFY_EMAIL}],
+                    "subject": "🚍 Nueva cotización recibida - Ecobus"
+                }
+            ],
+            "from": {"email": FROM_EMAIL},
+            "content": [
+                {"type": "text/plain", "value": cuerpo}
+            ]
+        }
+
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
+
+        if r.status_code == 202:
+            print("📧 Correo SendGrid enviado correctamente")
+            return True
+
+        print("❌ Error SendGrid:", r.status_code, r.text)
+        return False
+
+    except Exception as e:
+        print("❌ Exception enviar_correo (SendGrid):", e)
+        return False
+
+
+# -------- MENÚ --------
 def menu_principal(to):
     enviar_botones(to, "¡Hola! soy el bot de Ecobus. Cuentame, ¿Qué deseas hacer hoy? 🚍",
                    [{"id": "cotizar", "title": "Cotizar"},
@@ -142,6 +218,7 @@ def mostrar_resumen(to):
         "Si quieres cambiar algo, escribe por ejemplo: *cambiar correo*"
     )
     enviar_texto(to, resumen)
+
 # -------- Corrección dinámica --------
 def corregir_campos(to, texto_lower):
     m = usuarios[to]
@@ -246,73 +323,108 @@ def procesar_flujo(to, texto, texto_lower):
         u["estado"] = "confirmar"
         mostrar_resumen(to)
         return enviar_confirmacion(to)
-        return enviar_botones(
-            to,
-            "¿Confirmar cotización?",
-            [
-                {"id": "confirmar_si", "title": "Sí"},
-                {"id": "confirmar_no", "title": "No"},
-            ],
+
+# -------- CONFIRMAR --------
+    if estado == "confirmar" and texto_lower == "confirmar_si":
+    u["cotizacion_id"] = str(uuid.uuid4())[:8].upper()
+
+    try:
+        # 1. Geocoding
+        lat_o, lon_o = geocode(u["Origen"])
+        lat_d, lon_d = geocode(u["Destino"])
+
+        # 2. Ruta ida
+        km_ida, horas_ida = route((lat_o, lon_o), (lat_d, lon_d))
+
+        # 3. Ruta vuelta (siempre)
+        km_vuelta, horas_vuelta = route((lat_d, lon_d), (lat_o, lon_o))
+
+        km_total = km_ida + km_vuelta
+        horas_total = horas_ida + horas_vuelta
+
+        # 4. Pricing
+        resultado = calcular_precio(
+            km_total=km_total,
+            horas_total=horas_total,
+            pasajeros=u["Pasajeros"]
         )
 
-    # ✅ CONFIRMAR (CORRECTAMENTE DENTRO DE LA FUNCIÓN)
-    if estado == "confirmar" and texto_lower == "confirmar_si":
-        u["cotizacion_id"] = str(uuid.uuid4())[:8].upper()
+        # 5. Guardar en usuario
+        u["KM Total"] = round(km_total, 2)
+        u["Horas Total"] = round(horas_total, 2)
+        u["Vehiculo"] = resultado["vehiculo"]
+        u["Precio"] = resultado["precio_final"]
 
-        try:
-            lat_o, lon_o = geocode(u["Origen"])
-            lat_d, lon_d = geocode(u["Destino"])
-
-            km_ida, h_ida = route((lat_o, lon_o), (lat_d, lon_d))
-            km_v, h_v = route((lat_d, lon_d), (lat_o, lon_o))
-
-            km_total = km_ida + km_vuelta
-            horas_total = horas_ida + horas_vuelta
-
-            resultado = calcular_precio(
-                km_total=km_ida + km_v,
-                horas_total=h_ida + h_v,
-                pasajeros=u["Pasajeros"],
-            )
-
-            u.update(resultado)
-
-        except Exception as e:
-            print("❌ Error cotizando:", e)
-
+    except Exception as e:
+        print("❌ Error cotizando:", e)
+        enviar_texto(to, "⚠️ No pudimos calcular la ruta. Un ejecutivo revisará tu solicitud.")
         guardar_en_sheet(u)
-        enviar_texto(to, "✅ Cotización enviada")
+        enviar_correo(u)
         usuarios.pop(to, None)
+    return
 
+    guardar_en_sheet(u)
+    enviar_correo(u)
+    enviar_texto(to, "✅ Cotización enviada. Te contactaremos a la brevedad.")
+    usuarios.pop(to, None)
 
+# -------- Webhook --------
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
     if request.method == "GET":
         if request.args.get("hub.verify_token") == VERIFY_TOKEN:
             return request.args.get("hub.challenge")
-        return "Error", 403
+        return "Error Token", 403
 
     data = request.get_json()
-    mensajes = (
-        data.get("entry", [{}])[0]
-        .get("changes", [{}])[0]
-        .get("value", {})
-        .get("messages", [])
-    )
+    entry = data.get("entry", [{}])[0].get("changes", [{}])[0].get("value", {})
+    mensajes = entry.get("messages", [])
 
     for m in mensajes:
         wa_id = m.get("from")
-        texto = (
-            m["text"]["body"]
-            if m.get("type") == "text"
-            else m.get("interactive", {})
-            .get("button_reply", {})
-            .get("id", "")
-        )
+        tipo = m.get("type", "")
+        texto = ""
+
+        if tipo == "text":
+            texto = m["text"]["body"]
+
+        elif tipo == "interactive":
+            texto = m["interactive"]["button_reply"]["id"]
+
+        elif tipo == "location":
+            lat = m["location"]["latitude"]
+            lon = m["location"]["longitude"]
+            texto = f"{lat},{lon}"
+
+        else:
+            texto = ""
+
+        texto_lower = texto.lower()
 
         if wa_id not in usuarios:
-            usuarios[wa_id] = {"estado": "nombre"}
+            usuarios[wa_id] = {
+                "estado": None,
+                "modo_correccion": False
+            }
 
-        procesar_flujo(wa_id, texto, texto.lower())
+        if texto_lower in ["hola", "menú", "menu", "inicio"]:
+            usuarios[wa_id]["estado"] = None
+            menu_principal(wa_id)
+            continue
 
+        if usuarios[wa_id]["estado"] is None:
+            if texto_lower == "cotizar":
+                usuarios[wa_id]["estado"] = "nombre"
+                enviar_texto(wa_id, "👤 Nombre de la persona/empresa solicitante")
+            elif texto_lower == "ejecutivo":
+                enviar_texto(
+                    wa_id,
+                    "Perfecto, Fabian será el ejecutivo encargado 📞 +56 9 9871 1060"
+                )
+            else:
+                menu_principal(wa_id)
+        else:
+            procesar_flujo(wa_id, texto, texto_lower)
+
+    # 🔴 ESTE return DEBE QUEDAR DENTRO DE LA FUNCIÓN
     return jsonify({"status": "ok"}), 200
