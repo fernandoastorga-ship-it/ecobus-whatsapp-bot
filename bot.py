@@ -5,6 +5,8 @@ from flask import Flask, request, jsonify
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, date
+from pricing_engine import calcular_precio
+from maps import geocode, route
 import re
 import smtplib
 from email.mime.text import MIMEText
@@ -322,16 +324,50 @@ def procesar_flujo(to, texto, texto_lower):
         mostrar_resumen(to)
         return enviar_confirmacion(to)
 
-    # -------- CONFIRMAR --------
-    if estado == "confirmar" and texto_lower == "confirmar_si":
-        u["cotizacion_id"] = str(uuid.uuid4())[:8].upper()
+# -------- CONFIRMAR --------
+if estado == "confirmar" and texto_lower == "confirmar_si":
+    u["cotizacion_id"] = str(uuid.uuid4())[:8].upper()
+
+    try:
+        # 1. Geocoding
+        lat_o, lon_o = geocode(u["Origen"])
+        lat_d, lon_d = geocode(u["Destino"])
+
+        # 2. Ruta ida
+        km_ida, horas_ida = route((lat_o, lon_o), (lat_d, lon_d))
+
+        # 3. Ruta vuelta (siempre)
+        km_vuelta, horas_vuelta = route((lat_d, lon_d), (lat_o, lon_o))
+
+        km_total = km_ida + km_vuelta
+        horas_total = horas_ida + horas_vuelta
+
+        # 4. Pricing
+        resultado = calcular_precio(
+            km_total=km_total,
+            horas_total=horas_total,
+            pasajeros=u["Pasajeros"]
+        )
+
+        # 5. Guardar en usuario
+        u["KM Total"] = round(km_total, 2)
+        u["Horas Total"] = round(horas_total, 2)
+        u["Vehiculo"] = resultado["vehiculo"]
+        u["Precio"] = resultado["precio_final"]
+
+    except Exception as e:
+        print("❌ Error cotizando:", e)
+        enviar_texto(to, "⚠️ No pudimos calcular la ruta. Un ejecutivo revisará tu solicitud.")
         guardar_en_sheet(u)
         enviar_correo(u)
-        enviar_texto(to, "✅ Cotización enviada. Gracias.")
         usuarios.pop(to, None)
+        return
 
+    guardar_en_sheet(u)
+    enviar_correo(u)
+    enviar_texto(to, "✅ Cotización enviada. Te contactaremos a la brevedad.")
+    usuarios.pop(to, None)
 
-# -------- Webhook --------
 # -------- Webhook --------
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
