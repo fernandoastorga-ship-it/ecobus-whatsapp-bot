@@ -1,32 +1,91 @@
-# maps.py
 import os
 import requests
 
+# ===============================
+# CONFIG
+# ===============================
 MAPBOX_TOKEN = os.getenv("MAPBOX_TOKEN")
+ORS_API_KEY = os.getenv("ORS_API_KEY")
 
+if not MAPBOX_TOKEN:
+    raise RuntimeError("❌ MAPBOX_TOKEN no está definido en variables de entorno")
+
+if not ORS_API_KEY:
+    raise RuntimeError("❌ ORS_API_KEY no está definido en variables de entorno")
+
+
+# ===============================
+# NORMALIZACIÓN DE DIRECCIONES
+# ===============================
+def normalizar_direccion(texto: str) -> str:
+    texto = texto.lower().strip()
+
+    reemplazos = [
+        "mall",
+        "centro comercial",
+        "shopping",
+    ]
+
+    for r in reemplazos:
+        texto = texto.replace(r, "")
+
+    while "  " in texto:
+        texto = texto.replace("  ", " ")
+
+    return texto
+
+
+# ===============================
+# GEOCODING (MAPBOX)
+# ===============================
 def geocode(direccion: str):
-    url = "https://api.mapbox.com/geocoding/v5/mapbox.places/" + direccion + ".json"
-    params = {
-        "access_token": MAPBOX_TOKEN,
-        "country": "CL",
-        "limit": 1,
-        "language": "es"
-    }
+    direccion_original = direccion
+    direccion = normalizar_direccion(direccion)
 
-    r = requests.get(url, params=params, timeout=10)
-    data = r.json()
+    print("🧭 Geocoding:", direccion_original)
 
-    if not data.get("features"):
-        raise Exception(f"No se pudo geocodificar: {direccion}")
+    # Fallbacks progresivos (misma lógica, más robusta)
+    queries = [
+        direccion,
+        f"{direccion}, Santiago",
+        f"{direccion}, Región Metropolitana, Chile"
+    ]
 
-    lon, lat = data["features"][0]["center"]
-    return lat, lon
+    for q in queries:
+        url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{q}.json"
+        params = {
+            "access_token": MAPBOX_TOKEN,
+            "country": "cl",
+            "language": "es",
+            "limit": 1,
+            "types": "poi,address",
+            # Bounding box Región Metropolitana
+            "bbox": "-71.6,-33.7,-70.3,-33.2"
+        }
+
+        r = requests.get(url, params=params, timeout=10)
+        print("📦 Mapbox geocode:", r.status_code, q)
+
+        if r.status_code != 200:
+            continue
+
+        data = r.json()
+        features = data.get("features", [])
+
+        if features:
+            lon, lat = features[0]["center"]
+            return lat, lon
+
+    raise Exception(f"No se pudo geocodificar: {direccion_original}")
 
 
+# ===============================
+# RUTEO (OPENROUTESERVICE)
+# ===============================
 def route(origen, destino):
     url = "https://api.openrouteservice.org/v2/directions/driving-car"
     headers = {
-        "Authorization": os.getenv("ORS_API_KEY"),
+        "Authorization": ORS_API_KEY,
         "Content-Type": "application/json"
     }
 
@@ -38,6 +97,10 @@ def route(origen, destino):
     }
 
     r = requests.post(url, json=body, headers=headers, timeout=20)
+
+    if r.status_code != 200:
+        raise Exception("No se pudo calcular la ruta")
+
     data = r.json()
 
     if "routes" not in data:
