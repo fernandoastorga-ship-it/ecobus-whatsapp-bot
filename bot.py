@@ -141,21 +141,30 @@ def enviar_correo(usuario):
         )
 
         # 📧 Cuerpo del correo
-        cuerpo = (
-            "Nueva solicitud de cotización - Ecobus\n\n"
-            f"Nombre: {usuario.get('Nombre','')}\n"
-            f"Correo: {usuario.get('Correo','')}\n"
-            f"Fecha viaje: {usuario.get('Fecha Viaje','')}\n"
-            f"Pasajeros: {usuario.get('Pasajeros','')}\n"
-            f"Origen: {usuario.get('Origen','')}\n"
-            f"Destino: {usuario.get('Destino','')}\n"
-            f"Hora ida: {usuario.get('Hora Ida','')}\n"
-            f"Hora regreso: {usuario.get('Hora Regreso','')}\n"
-            f"Teléfono: {usuario.get('Telefono','')}\n"
-            "\n----------------------------------\n"
-            "👉 Marcar cotización como RESPONDIDA:\n"
-            f"{link_seguimiento}\n"
-        )
+cuerpo = (
+    "Nueva solicitud de cotización - Ecobus\n\n"
+    f"ID Cotización: {usuario.get('cotizacion_id','')}\n"
+    f"Nombre: {usuario.get('Nombre','')}\n"
+    f"Correo: {usuario.get('Correo','')}\n"
+    f"Fecha viaje: {usuario.get('Fecha Viaje','')}\n"
+    f"Pasajeros: {usuario.get('Pasajeros','')}\n"
+    f"Origen: {usuario.get('Origen','')}\n"
+    f"Destino: {usuario.get('Destino','')}\n"
+    f"Hora ida: {usuario.get('Hora Ida','')}\n"
+    f"Hora regreso: {usuario.get('Hora Regreso','')}\n"
+    f"Teléfono: {usuario.get('Telefono','')}\n"
+    "\n=============================\n"
+    "RESULTADO AUTOMÁTICO\n"
+    "=============================\n"
+    f"Vehículo sugerido: {usuario.get('Vehiculo','(no calculado)')}\n"
+    f"KM estimados (total): {usuario.get('KM Total','(no calculado)')}\n"
+    f"Horas estimadas (total): {usuario.get('Horas Total','(no calculado)')}\n"
+    f"Precio estimado: ${usuario.get('Precio','(no calculado)')}\n"
+    "\n----------------------------------\n"
+    "👉 Marcar cotización como RESPONDIDA:\n"
+    f"{link_seguimiento}\n"
+)
+
 
         url = "https://api.sendgrid.com/v3/mail/send"
         headers = {
@@ -354,7 +363,7 @@ def procesar_flujo(to, texto, texto_lower):
             u["KM Total"] = round(km_total, 2)
             u["Horas Total"] = round(horas_total, 2)
             u["Vehiculo"] = resultado["vehiculo"]
-            u["Precio"] = resultado["precio_final"]
+            u["Precio"] = f"{int(resultado['precio_final']):,}".replace(",", ".")
 
         except Exception as e:
             print("❌ Error cotizando:", e)
