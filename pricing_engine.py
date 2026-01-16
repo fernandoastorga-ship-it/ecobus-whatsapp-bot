@@ -1,9 +1,9 @@
 # pricing_engine.py
 
 COSTOS = {
-    "van": {"km": 976, "hora": 14261},
-    "taxibus": {"km": 1211, "hora": 14261},
-    "bus": {"km": 1385, "hora": 14261},
+    "van": {"km": 904, "hora": 13080},
+    "taxibus": {"km": 1264, "hora": 13080},
+    "bus": {"km": 1190, "hora": 13080},
 }
 
 MARGEN = 0.35  # 35%
