@@ -9,3 +9,4 @@ LUGARES_CONOCIDOS = {
     "aeropuerto arturo merino benitez": (-33.3929, -70.7858),
     "acuapark el idilio": (-33.597957, -70.887333),
 }
+
