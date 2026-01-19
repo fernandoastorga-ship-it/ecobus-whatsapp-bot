@@ -6,7 +6,8 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, date
 from pricing_engine import calcular_precio
-from maps import geocode, route
+from maps import route
+from geocoding.geocoding_resolver import resolver_direccion
 import re
 import smtplib
 from email.mime.text import MIMEText
@@ -127,6 +128,10 @@ def enviar_botones(to, cuerpo, botones):
 
 
 # -------- Email --------
+import base64
+from pdf_generator import generar_pdf_cotizacion
+
+
 def enviar_correo(usuario):
     try:
         SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
@@ -134,37 +139,25 @@ def enviar_correo(usuario):
             print("❌ Falta SENDGRID_API_KEY en variables de entorno")
             return False
 
-        # 🔗 Link de seguimiento (usa tu dominio real de Render)
-        link_seguimiento = (
-            f"https://ecobus-whatsapp-bot.onrender.com/seguimiento"
-            f"?id={usuario.get('cotizacion_id','')}"
-        )
+        # ✅ Generar PDF
+        pdf_path = generar_pdf_cotizacion(usuario)
+        print("✅ PDF generado en:", pdf_path)
 
-        # 📧 Cuerpo del correo
+        with open(pdf_path, "rb") as f:
+            pdf_base64 = base64.b64encode(f.read()).decode("utf-8")
+
+        print("✅ PDF convertido a base64 (tamaño chars):", len(pdf_base64))
+
         cuerpo = (
-           "Nueva solicitud de cotización - Ecobus\n\n"
+            "Hola,\n\n"
+            "Adjunto encontrarás la cotización solicitada.\n\n"
             f"ID Cotización: {usuario.get('cotizacion_id','')}\n"
-            f"Nombre: {usuario.get('Nombre','')}\n"
-            f"Correo: {usuario.get('Correo','')}\n"
-            f"Fecha viaje: {usuario.get('Fecha Viaje','')}\n"
-            f"Pasajeros: {usuario.get('Pasajeros','')}\n"
             f"Origen: {usuario.get('Origen','')}\n"
             f"Destino: {usuario.get('Destino','')}\n"
-            f"Hora ida: {usuario.get('Hora Ida','')}\n"
-            f"Hora regreso: {usuario.get('Hora Regreso','')}\n"
-            f"Teléfono: {usuario.get('Telefono','')}\n"
-         "\n=============================\n"
-         "RESULTADO AUTOMÁTICO\n"
-         "=============================\n"
-            f"Vehículo sugerido: {usuario.get('Vehiculo','(no calculado)')}\n"
-            f"KM estimados (total): {usuario.get('KM Total','(no calculado)')}\n"
-            f"Horas estimadas (total): {usuario.get('Horas Total','(no calculado)')}\n"
-            f"Precio estimado: ${usuario.get('Precio','(no calculado)')}\n"
-         "\n----------------------------------\n"
-         "👉 Marcar cotización como RESPONDIDA:\n"
-            f"{link_seguimiento}\n"
-       )
-
+            f"Pasajeros: {usuario.get('Pasajeros','')}\n"
+            f"Total estimado: ${usuario.get('Precio','')}\n\n"
+            "Ecobus / Ecovan\n"
+        )
 
         url = "https://api.sendgrid.com/v3/mail/send"
         headers = {
@@ -175,27 +168,36 @@ def enviar_correo(usuario):
         payload = {
             "personalizations": [
                 {
-                    "to": [{"email": NOTIFY_EMAIL}],
-                    "subject": "🚍 Nueva cotización recibida - Ecobus"
+                    "to": [{"email": usuario.get("Correo", "")}],
+                    "cc": [{"email": NOTIFY_EMAIL}],
+                    "subject": "Cotización Ecobus - Transporte Privado"
                 }
             ],
             "from": {"email": FROM_EMAIL},
             "content": [
                 {"type": "text/plain", "value": cuerpo}
+            ],
+            "attachments": [
+                {
+                    "content": pdf_base64,
+                    "type": "application/pdf",
+                    "filename": f"cotizacion_{usuario.get('cotizacion_id','')}.pdf",
+                    "disposition": "attachment"
+                }
             ]
         }
 
         r = requests.post(url, headers=headers, json=payload, timeout=20)
 
         if r.status_code == 202:
-            print("📧 Correo SendGrid enviado correctamente")
+            print("📧 Correo enviado con PDF adjunto OK")
             return True
 
         print("❌ Error SendGrid:", r.status_code, r.text)
         return False
 
     except Exception as e:
-        print("❌ Exception enviar_correo (SendGrid):", e)
+        print("❌ Exception enviar_correo:", e)
         return False
 
 
@@ -340,8 +342,8 @@ def procesar_flujo(to, texto, texto_lower):
 
         try:
             # 1. Geocoding
-            lat_o, lon_o = geocode(u["Origen"])
-            lat_d, lon_d = geocode(u["Destino"])
+            lat_o, lon_o = resolver_direccion(u["Origen"])
+            lat_d, lon_d = resolver_direccion(u["Destino"]) 
 
             # 2. Ruta ida
             km_ida, horas_ida = route((lat_o, lon_o), (lat_d, lon_d))
