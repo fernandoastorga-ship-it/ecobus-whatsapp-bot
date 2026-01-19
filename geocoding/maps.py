@@ -77,7 +77,8 @@ def route(origen, destino):
         "coordinates": [
             [origen[1], origen[0]],
             [destino[1], destino[0]]
-        ]
+        ],
+        "geometry": True
     }
 
     r = requests.post(url, json=body, headers=headers, timeout=20)
@@ -90,4 +91,7 @@ def route(origen, destino):
     km = summary["distance"] / 1000
     horas = summary["duration"] / 3600
 
-    return km, horas
+    polyline = data["routes"][0].get("geometry", "")
+
+    return km, horas, polyline
+
