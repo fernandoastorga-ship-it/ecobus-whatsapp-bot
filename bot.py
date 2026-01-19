@@ -6,15 +6,12 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, date
 from pricing_engine import calcular_precio
-from maps import route
-from maps import geocode
 from maps import geocode, route
-from map_image import generar_mapa_static
-
-
 import re
 import smtplib
 from email.mime.text import MIMEText
+import base64
+from pdf_generator import generar_pdf_cotizacion
 
 app = Flask(__name__)
 
@@ -132,13 +129,6 @@ def enviar_botones(to, cuerpo, botones):
 
 
 # -------- Email --------
-import base64
-from pdf_generator import generar_pdf_cotizacion
-from map_image import generar_mapa_static
-import base64
-
-
-
 def enviar_correo(usuario):
     try:
         SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
@@ -148,21 +138,28 @@ def enviar_correo(usuario):
 
         # ✅ Generar PDF
         pdf_path = generar_pdf_cotizacion(usuario)
-        print("✅ PDF generado en:", pdf_path)
 
         with open(pdf_path, "rb") as f:
             pdf_base64 = base64.b64encode(f.read()).decode("utf-8")
 
-        print("✅ PDF convertido a base64 (tamaño chars):", len(pdf_base64))
+        # 🔗 Link de seguimiento
+        link_seguimiento = (
+            f"https://ecobus-whatsapp-bot.onrender.com/seguimiento"
+            f"?id={usuario.get('cotizacion_id','')}"
+        )
 
+        # 📧 Cuerpo del correo
         cuerpo = (
             "Hola,\n\n"
             "Adjunto encontrarás la cotización solicitada.\n\n"
+            "Si deseas confirmar o agendar el servicio, responde este correo y te contactaremos a la brevedad.\n\n"
+            "----------------------------------\n"
             f"ID Cotización: {usuario.get('cotizacion_id','')}\n"
             f"Origen: {usuario.get('Origen','')}\n"
             f"Destino: {usuario.get('Destino','')}\n"
             f"Pasajeros: {usuario.get('Pasajeros','')}\n"
-            f"Total estimado: ${usuario.get('Precio','')}\n\n"
+            f"Total estimado: ${usuario.get('Precio','')}\n"
+            "----------------------------------\n\n"
             "Ecobus / Ecovan\n"
         )
 
@@ -175,8 +172,8 @@ def enviar_correo(usuario):
         payload = {
             "personalizations": [
                 {
-                    "to": [{"email": usuario.get("Correo", "")}],
-                    "cc": [{"email": NOTIFY_EMAIL}],
+                    "to": [{"email": usuario.get("Correo", "")}],   # ✅ AL CLIENTE
+                    "cc": [{"email": NOTIFY_EMAIL}],               # ✅ COPIA A TI
                     "subject": "Cotización Ecobus - Transporte Privado"
                 }
             ],
@@ -197,42 +194,15 @@ def enviar_correo(usuario):
         r = requests.post(url, headers=headers, json=payload, timeout=20)
 
         if r.status_code == 202:
-            print("📧 Correo enviado con PDF adjunto OK")
+            print("📧 Correo con PDF enviado correctamente")
             return True
 
         print("❌ Error SendGrid:", r.status_code, r.text)
         return False
 
     except Exception as e:
-        print("❌ Exception enviar_correo:", e)
+        print("❌ Exception enviar_correo (SendGrid):", e)
         return False
-# ✅ Generar mapa (si hay datos)
-mapa_base64 = None
-try:
-    # si tienes km calculado y polyline
-    if usuario.get("Polyline Ida") not in [None, "", "PENDIENTE"]:
-        lat_o, lon_o = geocode(usuario["Origen"])
-        lat_d, lon_d = geocode(usuario["Destino"])
-
-        img_path = generar_mapa_static((lat_o, lon_o), (lat_d, lon_d), usuario["Polyline Ida"])
-
-        with open(img_path, "rb") as f:
-            mapa_base64 = base64.b64encode(f.read()).decode("utf-8")
-except Exception as e:
-    print("⚠️ No se pudo generar imagen del mapa:", e)
-
-if mapa_base64:
-    payload["attachments"].append(
-        {
-            "content": mapa_base64,
-            "type": "image/png",
-            "filename": "ruta_referencial.png",
-            "disposition": "attachment"
-        }
-    )
-
-
-
 
 # -------- MENÚ --------
 def menu_principal(to):
@@ -262,16 +232,6 @@ def mostrar_resumen(to):
         "Si quieres cambiar algo, escribe por ejemplo: *cambiar correo*"
     )
     enviar_texto(to, resumen)
-
-# -------- Cotizacion pendiente --------
-
-def marcar_cotizacion_pendiente(u: dict, motivo: str):
-    u["KM Total"] = "PENDIENTE"
-    u["Horas Total"] = "PENDIENTE"
-    u["Vehiculo"] = "PENDIENTE"
-    u["Precio"] = "PENDIENTE"
-    u["Error Cotizacion"] = motivo
-
 
 # -------- Corrección dinámica --------
 def corregir_campos(to, texto_lower):
@@ -378,7 +338,7 @@ def procesar_flujo(to, texto, texto_lower):
         mostrar_resumen(to)
         return enviar_confirmacion(to)
 
-    # -------- CONFIRMAR --------
+# -------- CONFIRMAR --------
     # -------- CONFIRMAR --------
     if estado == "confirmar" and texto_lower == "confirmar_si":
         u["cotizacion_id"] = str(uuid.uuid4())[:8].upper()
@@ -388,30 +348,14 @@ def procesar_flujo(to, texto, texto_lower):
             lat_o, lon_o = geocode(u["Origen"])
             lat_d, lon_d = geocode(u["Destino"])
 
-            # 2. Ruta ida (ahora devuelve 3 valores)
-            km_ida, horas_ida, poly_ida = route((lat_o, lon_o), (lat_d, lon_d))
+            # 2. Ruta ida
+            km_ida, horas_ida = route((lat_o, lon_o), (lat_d, lon_d))
 
             # 3. Ruta vuelta (siempre)
-            km_vuelta, horas_vuelta, poly_vuelta = route((lat_d, lon_d), (lat_o, lon_o))
+            km_vuelta, horas_vuelta = route((lat_d, lon_d), (lat_o, lon_o))
 
             km_total = km_ida + km_vuelta
             horas_total = horas_ida + horas_vuelta
-
-            # ✅ Guardar polyline para mapa
-            u["Polyline Ida"] = poly_ida
-
-            # ✅ Generar imagen del mapa (para insertarlo en PDF)
-            try:
-                ruta_img = generar_mapa_static(
-                    (lat_o, lon_o),
-                    (lat_d, lon_d),
-                    u["Polyline Ida"]
-                )
-                u["Mapa Ruta"] = ruta_img
-                print("✅ Imagen mapa generada en:", u["Mapa Ruta"])
-            except Exception as e:
-                print("⚠️ No se pudo generar imagen del mapa:", e)
-                u["Mapa Ruta"] = ""
 
             # 4. Pricing
             resultado = calcular_precio(
@@ -425,33 +369,26 @@ def procesar_flujo(to, texto, texto_lower):
             u["Horas Total"] = round(horas_total, 2)
             u["Vehiculo"] = resultado["vehiculo"]
             u["Precio"] = resultado["precio_final"]
-            u["Error Cotizacion"] = ""
 
         except Exception as e:
             print("❌ Error cotizando:", e)
-
-            # ✅ PENDIENTE si falla
-            u["KM Total"] = "PENDIENTE"
-            u["Horas Total"] = "PENDIENTE"
-            u["Vehiculo"] = "PENDIENTE"
-            u["Precio"] = "PENDIENTE"
-            u["Error Cotizacion"] = str(e)
-            u["Mapa Ruta"] = ""
-
             enviar_texto(
                 to,
-                "⚠️ No pudimos calcular la ruta automáticamente.\n"
-                "Tu solicitud fue registrada y un ejecutivo enviará la cotización manualmente."
+                "⚠️ No pudimos calcular la ruta. Un ejecutivo revisará tu solicitud."
             )
+            guardar_en_sheet(u)
+            enviar_correo(u)
+            usuarios.pop(to, None)
+            return
 
-        # ✅ SIEMPRE guardar y enviar correo
         guardar_en_sheet(u)
         enviar_correo(u)
-
-        enviar_texto(to, "✅ Solicitud enviada. Gracias.")
+        enviar_texto(
+            to,
+            "✅ Cotización enviada. Te contactaremos a la brevedad."
+        )
         usuarios.pop(to, None)
         return
-
 
 # -------- Webhook --------
 @app.route("/webhook", methods=["GET", "POST"])
