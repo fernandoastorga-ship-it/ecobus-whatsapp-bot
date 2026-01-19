@@ -8,6 +8,9 @@ from datetime import datetime, date
 from pricing_engine import calcular_precio
 from maps import route
 from maps import geocode
+from maps import geocode, route
+from map_image import generar_mapa_static
+
 
 import re
 import smtplib
@@ -131,6 +134,9 @@ def enviar_botones(to, cuerpo, botones):
 # -------- Email --------
 import base64
 from pdf_generator import generar_pdf_cotizacion
+from map_image import generar_mapa_static
+import base64
+
 
 
 def enviar_correo(usuario):
@@ -200,6 +206,32 @@ def enviar_correo(usuario):
     except Exception as e:
         print("❌ Exception enviar_correo:", e)
         return False
+# ✅ Generar mapa (si hay datos)
+mapa_base64 = None
+try:
+    # si tienes km calculado y polyline
+    if usuario.get("Polyline Ida") not in [None, "", "PENDIENTE"]:
+        lat_o, lon_o = geocode(usuario["Origen"])
+        lat_d, lon_d = geocode(usuario["Destino"])
+
+        img_path = generar_mapa_static((lat_o, lon_o), (lat_d, lon_d), usuario["Polyline Ida"])
+
+        with open(img_path, "rb") as f:
+            mapa_base64 = base64.b64encode(f.read()).decode("utf-8")
+except Exception as e:
+    print("⚠️ No se pudo generar imagen del mapa:", e)
+
+if mapa_base64:
+    payload["attachments"].append(
+        {
+            "content": mapa_base64,
+            "type": "image/png",
+            "filename": "ruta_referencial.png",
+            "disposition": "attachment"
+        }
+    )
+
+
 
 
 # -------- MENÚ --------
@@ -347,7 +379,6 @@ def procesar_flujo(to, texto, texto_lower):
         return enviar_confirmacion(to)
 
     # -------- CONFIRMAR --------
-    # -------- CONFIRMAR --------
     if estado == "confirmar" and texto_lower == "confirmar_si":
         u["cotizacion_id"] = str(uuid.uuid4())[:8].upper()
 
@@ -357,13 +388,32 @@ def procesar_flujo(to, texto, texto_lower):
             lat_d, lon_d = geocode(u["Destino"])
 
             # 2) Ruta ida
-            km_ida, horas_ida = route((lat_o, lon_o), (lat_d, lon_d))
+            km_ida, horas_ida, poly_ida = route((lat_o, lon_o), (lat_d, lon_d))
+            km_vuelta, horas_vuelta, poly_vuelta = route((lat_d, lon_d), (lat_o, lon_o))
+
 
             # 3) Ruta vuelta (siempre ida y vuelta por ahora)
             km_vuelta, horas_vuelta = route((lat_d, lon_d), (lat_o, lon_o))
 
             km_total = km_ida + km_vuelta
             horas_total = horas_ida + horas_vuelta
+
+# ✅ Guardamos polyline de ida para generar el mapa
+u["Polyline Ida"] = poly_ida
+
+# ✅ Generar imagen del mapa para el PDF
+try:
+    ruta_img = generar_mapa_static(
+        (lat_o, lon_o),
+        (lat_d, lon_d),
+        u["Polyline Ida"]
+    )
+    u["Mapa Ruta"] = ruta_img
+    print("✅ Imagen mapa generada en:", u["Mapa Ruta"])
+except Exception as e:
+    print("⚠️ No se pudo generar imagen del mapa:", e)
+    u["Mapa Ruta"] = ""
+
 
             # 4) Pricing
             resultado = calcular_precio(
