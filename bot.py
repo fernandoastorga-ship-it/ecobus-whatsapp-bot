@@ -7,7 +7,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, date
 from pricing_engine import calcular_precio
 from maps import route
-from geocoding.geocoding_resolver import resolver_direccion
+from maps import geocode
+
 import re
 import smtplib
 from email.mime.text import MIMEText
