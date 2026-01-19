@@ -231,6 +231,16 @@ def mostrar_resumen(to):
     )
     enviar_texto(to, resumen)
 
+# -------- Cotizacion pendiente --------
+
+def marcar_cotizacion_pendiente(u: dict, motivo: str):
+    u["KM Total"] = "PENDIENTE"
+    u["Horas Total"] = "PENDIENTE"
+    u["Vehiculo"] = "PENDIENTE"
+    u["Precio"] = "PENDIENTE"
+    u["Error Cotizacion"] = motivo
+
+
 # -------- Corrección dinámica --------
 def corregir_campos(to, texto_lower):
     m = usuarios[to]
@@ -336,55 +346,57 @@ def procesar_flujo(to, texto, texto_lower):
         mostrar_resumen(to)
         return enviar_confirmacion(to)
 
-# -------- CONFIRMAR --------
+    # -------- CONFIRMAR --------
     # -------- CONFIRMAR --------
     if estado == "confirmar" and texto_lower == "confirmar_si":
         u["cotizacion_id"] = str(uuid.uuid4())[:8].upper()
 
         try:
-            # 1. Geocoding
-            lat_o, lon_o = resolver_direccion(u["Origen"])
-            lat_d, lon_d = resolver_direccion(u["Destino"]) 
+            # 1) Geocoding
+            lat_o, lon_o = geocode(u["Origen"])
+            lat_d, lon_d = geocode(u["Destino"])
 
-            # 2. Ruta ida
+            # 2) Ruta ida
             km_ida, horas_ida = route((lat_o, lon_o), (lat_d, lon_d))
 
-            # 3. Ruta vuelta (siempre)
+            # 3) Ruta vuelta (siempre ida y vuelta por ahora)
             km_vuelta, horas_vuelta = route((lat_d, lon_d), (lat_o, lon_o))
 
             km_total = km_ida + km_vuelta
             horas_total = horas_ida + horas_vuelta
 
-            # 4. Pricing
+            # 4) Pricing
             resultado = calcular_precio(
                 km_total=km_total,
                 horas_total=horas_total,
                 pasajeros=u["Pasajeros"]
             )
 
-            # 5. Guardar en usuario
+            # 5) Guardar cálculo en el usuario (para email/pdf/sheets)
             u["KM Total"] = round(km_total, 2)
             u["Horas Total"] = round(horas_total, 2)
             u["Vehiculo"] = resultado["vehiculo"]
             u["Precio"] = resultado["precio_final"]
+            u["Error Cotizacion"] = ""
 
         except Exception as e:
             print("❌ Error cotizando:", e)
+
+            # ✅ Marcar como pendiente pero NO cortar el flujo
+            marcar_cotizacion_pendiente(u, str(e))
+
+            # ✅ Mensaje al cliente (sin perder la cotización)
             enviar_texto(
                 to,
-                "⚠️ No pudimos calcular la ruta. Un ejecutivo revisará tu solicitud."
+                "⚠️ No pudimos calcular la ruta automáticamente.\n"
+                "Tu solicitud fue registrada y un ejecutivo enviará la cotización manualmente."
             )
-            guardar_en_sheet(u)
-            enviar_correo(u)
-            usuarios.pop(to, None)
-            return
 
+        # ✅ SIEMPRE guardar y enviar correo, aunque haya fallado el cálculo
         guardar_en_sheet(u)
         enviar_correo(u)
-        enviar_texto(
-            to,
-            "✅ Cotización enviada. Te contactaremos a la brevedad."
-        )
+
+        enviar_texto(to, "✅ Solicitud enviada. Gracias.")
         usuarios.pop(to, None)
         return
 
