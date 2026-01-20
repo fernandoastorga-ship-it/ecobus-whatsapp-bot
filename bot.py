@@ -8,6 +8,8 @@ from datetime import datetime, date
 from pricing_engine import calcular_precio
 from maps import geocode, route
 from map_image import generar_mapa_static
+from pricing_engine import calcular_cotizacion_flotilla
+
 
 
 import re
@@ -408,19 +410,30 @@ def procesar_flujo(to, texto, texto_lower):
                 print("⚠️ No se pudo generar imagen del mapa:", e)
                 u["Mapa Ruta"] = ""
 
-            # 4. Pricing
-            resultado = calcular_precio(
+            # 4. Pricing (FLOTILLA)
+            resultado = calcular_cotizacion_flotilla(
                 km_total=km_total,
                 horas_total=horas_total,
-                pasajeros=u["Pasajeros"]
+                pasajeros=u["Pasajeros"],
+                margen=0.35
             )
 
             # 5. Guardar en usuario
             u["KM Total"] = round(km_total, 2)
             u["Horas Total"] = round(horas_total, 2)
-            u["Vehiculo"] = resultado["vehiculo"]
-            u["Precio"] = resultado["precio_final"]
+
+            # ✅ Detalle por vehículo y total
+            u["Detalle Vehiculos"] = resultado["detalle"]
+            u["Precio"] = round(resultado["total_final"], 0)
+
+            # ✅ Etiqueta general de vehículo
+            if len(resultado["detalle"]) == 1:
+                u["Vehiculo"] = resultado["detalle"][0]["vehiculo"]
+            else:
+                u["Vehiculo"] = "MULTI"
+
             u["Error Cotizacion"] = ""
+
 
         except Exception as e:
             print("❌ Error cotizando:", e)
