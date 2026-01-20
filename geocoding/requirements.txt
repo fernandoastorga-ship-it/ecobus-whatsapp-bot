@@ -1,0 +1,9 @@
+Flask
+gunicorn
+requests
+gspread
+oauth2client
+python-dotenv
+reportlab
+Pillow
+
