@@ -5,7 +5,7 @@ from urllib.parse import quote
 MAPBOX_TOKEN = os.getenv("MAPBOX_TOKEN")
 
 
-def generar_mapa_static(origen, destino, polyline: str, cotizacion_id: str = "SINID") -> str:
+def generar_mapa_static(origen, destino, polyline: str, cot_id: str = "SINID") -> str:
     """
     Genera imagen PNG con ruta y marcadores A/B.
     Guarda en /tmp y retorna el path.
@@ -15,7 +15,6 @@ def generar_mapa_static(origen, destino, polyline: str, cotizacion_id: str = "SI
         raise Exception("MAPBOX_TOKEN no está configurado")
 
     style = "mapbox/streets-v12"
-
     encoded_polyline = quote(polyline)
 
     lon_o, lat_o = origen[1], origen[0]
@@ -35,10 +34,9 @@ def generar_mapa_static(origen, destino, polyline: str, cotizacion_id: str = "SI
     if r.status_code != 200:
         raise Exception(f"Mapbox Static Image error {r.status_code}: {r.text}")
 
-    output_path = f"/tmp/mapa_ruta_{cotizacion_id}.png"
+    output_path = f"/tmp/mapa_ruta_{cot_id}.png"
 
     with open(output_path, "wb") as f:
         f.write(r.content)
 
     return output_path
-

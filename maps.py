@@ -6,23 +6,22 @@ MAPBOX_TOKEN = os.getenv("MAPBOX_TOKEN")
 ORS_API_KEY = os.getenv("ORS_API_KEY")
 
 
-# ✅ Diccionario de comunas / lugares típicos RM para “forzar contexto”
-RM_HINTS = [
-    "peñaflor", "penaflor",
-    "isla de maipo",
-    "talagante",
-    "padre hurtado",
-    "curacaví", "curacavi",
-    "melipilla",
-    "maipú", "maipu",
-    "pudahuel",
-    "estación central", "estacion central",
-    "santiago",
-    "cerrillos",
-    "el monte"
-]
+# ✅ Centros aproximados de comunas (RM)
+# Esto evita errores tipo "Pasaje Peñaflor en Estación Central"
+COMUNAS_RM = {
+    "peñaflor": (-33.6169, -70.8764),
+    "penaflor": (-33.6169, -70.8764),
+    "isla de maipo": (-33.7491, -70.8975),
+    "talagante": (-33.6669, -70.9304),
+    "padre hurtado": (-33.5752, -70.8216),
+    "el monte": (-33.6857, -70.9830),
+    "melipilla": (-33.6894, -71.2158),
+    "maipú": (-33.5095, -70.7576),
+    "maipu": (-33.5095, -70.7576),
+}
 
-# ✅ Lugares típicos V Región para no confundir con “Santiago”
+
+# ✅ Lugares típicos V Región (solo ayuda en scoring)
 V_HINTS = [
     "viña", "vina", "viña del mar", "vina del mar",
     "valpara", "valparaíso", "valparaiso",
@@ -34,6 +33,10 @@ V_HINTS = [
 ]
 
 
+def _clean_text(s: str) -> str:
+    return (s or "").strip().lower()
+
+
 def _contains_any(text: str, words: list[str]) -> bool:
     t = (text or "").lower()
     return any(w in t for w in words)
@@ -41,45 +44,41 @@ def _contains_any(text: str, words: list[str]) -> bool:
 
 def geocode(direccion: str):
     """
-    Geocoding robusto Chile.
-    - URL encode
-    - country=CL
-    - proximity Santiago
-    - scoring por comuna / región
-    - evita POI incorrectos (ej: Pasaje Peñaflor en Estación Central)
+    Geocoding robusto Chile:
+    1) Si es comuna RM conocida -> retorna coords fijas
+    2) Si no -> fallback Mapbox con filtros/scoring
     """
-
-    if not MAPBOX_TOKEN:
-        raise Exception("MAPBOX_TOKEN no está definido en variables de entorno")
-
-    direccion_original = direccion
-    direccion = (direccion or "").strip()
 
     if not direccion:
         raise Exception("Dirección vacía")
 
-    # ✅ Si el usuario escribe solo “Peñaflor”, ayudamos con contexto RM
-    direccion_expandida = direccion
-    if len(direccion.split()) <= 2:
-        direccion_expandida = f"{direccion}, Región Metropolitana, Chile"  # ✅ CAMBIO MINIMO
+    direccion_original = direccion
+    d = _clean_text(direccion)
 
-    # ✅ Sesgo RM si detectamos comunas RM
-    # (esto NO bloquea Viña/Valpo, porque tiene su propio hint)
-    texto_lower = direccion.lower()
-    es_rm = _contains_any(texto_lower, RM_HINTS)
-    es_quinta = _contains_any(texto_lower, V_HINTS)
+    # ✅ 1) FORZAR comunas RM conocidas (tu caso crítico)
+    if d in COMUNAS_RM:
+        lat, lon = COMUNAS_RM[d]
+        print("📍 Geocode FORZADO (RM):", direccion_original, "=>", (lat, lon))
+        return lat, lon
 
-    # ✅ URL encoding
+    # ✅ 2) Fallback Mapbox
+    if not MAPBOX_TOKEN:
+        raise Exception("MAPBOX_TOKEN no está definido en variables de entorno")
+
+    # Ayuda si es muy corto
+    direccion_expandida = direccion.strip()
+    if len(direccion_expandida.split()) <= 2:
+        direccion_expandida = f"{direccion_expandida}, Chile"
+
     direccion_q = quote(direccion_expandida)
 
     url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{direccion_q}.json"
     params = {
         "access_token": MAPBOX_TOKEN,
         "country": "CL",
-        "limit": 8,             # más candidatos para filtrar bien
+        "limit": 8,
         "language": "es",
         "autocomplete": "true",
-        # Sesgo a Santiago (lon,lat)
         "proximity": "-70.6693,-33.4489"
     }
 
@@ -90,11 +89,13 @@ def geocode(direccion: str):
     if not features:
         raise Exception(f"No se pudo geocodificar: {direccion_original}")
 
-    # ✅ Filtrar tipos útiles
     tipos_permitidos = {"place", "locality", "address", "poi", "neighborhood"}
     candidatos = [f for f in features if any(t in tipos_permitidos for t in f.get("place_type", []))]
     if not candidatos:
         candidatos = features
+
+    texto_lower = d
+    es_quinta = _contains_any(texto_lower, V_HINTS)
 
     def score_feature(f):
         relevance = float(f.get("relevance", 0))
@@ -103,38 +104,30 @@ def geocode(direccion: str):
 
         bonus = 0.0
 
-        # ✅ Si el input menciona Quinta Región, bonifica Quinta Región
         if es_quinta:
             if _contains_any(place_name, V_HINTS):
                 bonus += 1.0
-            # Penaliza Santiago/RM si estamos buscando quinta región
             if "santiago" in place_name or "región metropolitana" in place_name or "region metropolitana" in place_name:
                 bonus -= 0.8
 
-        # ✅ Si el input menciona RM, bonifica RM
-        if es_rm and not es_quinta:
-            if "región metropolitana" in place_name or "region metropolitana" in place_name or "santiago" in place_name:
-                bonus += 0.8
-
-        # ✅ Si input es una comuna, el mejor match suele ser "place/locality"
+        # comuna -> preferir place/locality
         if "place" in place_type:
             bonus += 0.45
         if "locality" in place_type:
             bonus += 0.35
 
-        # ✅ POI (malls/aeropuertos) son OK, pero no deben ganarle a una comuna real
-        if "poi" in place_type:
-            bonus += 0.10
+        # address / poi ok pero no dominan
         if "address" in place_type:
             bonus += 0.15
+        if "poi" in place_type:
+            bonus += 0.10
 
-        # ✅ Penalizar "Pasaje/Calle/Avenida" cuando el input es una comuna corta
-        if len(direccion.split()) <= 2:
+        # penaliza “Pasaje/Calle/Avenida” si el input era muy corto
+        if len(direccion.strip().split()) <= 2:
             if "pasaje" in place_name or "calle" in place_name or "avenida" in place_name:
-                bonus -= 2.0  # ✅ CAMBIO MINIMO (ANTES ERA -0.7)
+                bonus -= 0.7
 
-        # ✅ Bonus fuerte si contiene exactamente el texto del usuario
-        if direccion.lower() in place_name:
+        if d in place_name:
             bonus += 0.6
 
         return relevance + bonus
@@ -142,19 +135,18 @@ def geocode(direccion: str):
     candidatos.sort(key=score_feature, reverse=True)
     best = candidatos[0]
 
-    # ✅ Debug útil
-    try:
-        print("📍 Entrada geocode:", direccion_original)
-        print("📍 Expandida:", direccion_expandida)
-        print("📍 Geocode elegido:", best.get("place_name"))
-    except:
-        pass
+    print("📍 Entrada geocode:", direccion_original)
+    print("📍 Expandida:", direccion_expandida)
+    print("📍 Geocode elegido:", best.get("place_name"))
 
     lon, lat = best["center"]
     return lat, lon
 
 
 def route(origen, destino):
+    """
+    Retorna: (km, horas, polyline)
+    """
     if not ORS_API_KEY:
         raise Exception("ORS_API_KEY no está definido en variables de entorno")
 
@@ -166,7 +158,7 @@ def route(origen, destino):
 
     body = {
         "coordinates": [
-            [origen[1], origen[0]],   # ORS: [lon, lat]
+            [origen[1], origen[0]],
             [destino[1], destino[0]]
         ]
     }
@@ -183,7 +175,7 @@ def route(origen, destino):
     summary = data["routes"][0]["summary"]
     km = summary["distance"] / 1000
     horas = summary["duration"] / 3600
-
     polyline = data["routes"][0].get("geometry", "")
 
     return km, horas, polyline
+

@@ -385,33 +385,33 @@ def procesar_flujo(to, texto, texto_lower):
             lat_o, lon_o = geocode(u["Origen"])
             lat_d, lon_d = geocode(u["Destino"])
 
-            # 2. Ruta ida (devuelve 3 valores)
+            # 2. Ruta ida (3 valores)
             km_ida, horas_ida, poly_ida = route((lat_o, lon_o), (lat_d, lon_d))
 
-            # 3. Ruta vuelta (siempre)
+            # 3. Ruta vuelta
             km_vuelta, horas_vuelta, poly_vuelta = route((lat_d, lon_d), (lat_o, lon_o))
 
             km_total = km_ida + km_vuelta
             horas_total = horas_ida + horas_vuelta
 
+            # ✅ Guardar para PDF
             u["KM Total"] = round(km_total, 2)
             u["Horas Total"] = round(horas_total, 2)
-
-
             u["Polyline Ida"] = poly_ida
 
+            # ✅ Generar imagen mapa
             try:
                 ruta_img = generar_mapa_static(
                     (lat_o, lon_o),
                     (lat_d, lon_d),
-                    u["Polyline Ida"]
+                    u["Polyline Ida"],
+                    u.get("cotizacion_id", "SINID")
                 )
                 u["Mapa Ruta"] = ruta_img
                 print("✅ Imagen mapa generada en:", u["Mapa Ruta"])
             except Exception as e:
                 print("⚠️ No se pudo generar imagen del mapa:", e)
                 u["Mapa Ruta"] = ""
-
 
             # 4. Pricing
             if u["Pasajeros"] <= 45:
