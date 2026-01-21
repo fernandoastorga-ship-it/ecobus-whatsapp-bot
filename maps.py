@@ -58,11 +58,10 @@ def geocode(direccion: str):
     if not direccion:
         raise Exception("Dirección vacía")
 
-    # ✅ Si el usuario escribe solo “Peñaflor”, es mejor ayudar al geocoder con “Chile”
-    # (esto reduce MUCHÍSIMO errores de lugares “parecidos”)
+    # ✅ Si el usuario escribe solo “Peñaflor”, ayudamos con contexto RM
     direccion_expandida = direccion
     if len(direccion.split()) <= 2:
-        direccion_expandida = f"{direccion}, Chile"
+        direccion_expandida = f"{direccion}, Región Metropolitana, Chile"  # ✅ CAMBIO MINIMO
 
     # ✅ Sesgo RM si detectamos comunas RM
     # (esto NO bloquea Viña/Valpo, porque tiene su propio hint)
@@ -129,11 +128,10 @@ def geocode(direccion: str):
         if "address" in place_type:
             bonus += 0.15
 
-        # ✅ Penalizar "Pasaje X" si el input era solo "X" (ej: Peñaflor)
-        # porque Mapbox a veces sugiere calles o pasajes con ese nombre.
+        # ✅ Penalizar "Pasaje/Calle/Avenida" cuando el input es una comuna corta
         if len(direccion.split()) <= 2:
             if "pasaje" in place_name or "calle" in place_name or "avenida" in place_name:
-                bonus -= 0.7
+                bonus -= 2.0  # ✅ CAMBIO MINIMO (ANTES ERA -0.7)
 
         # ✅ Bonus fuerte si contiene exactamente el texto del usuario
         if direccion.lower() in place_name:
@@ -189,6 +187,3 @@ def route(origen, destino):
     polyline = data["routes"][0].get("geometry", "")
 
     return km, horas, polyline
-
-
-
