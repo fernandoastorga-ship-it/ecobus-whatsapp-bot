@@ -62,6 +62,7 @@ def generar_pdf_cotizacion(usuario: dict) -> str:
     km_txt = usuario.get("KM Total", "")
     horas_txt = usuario.get("Horas Total", "")
 
+
     if km_txt in ["", None]:
         km_txt = "PENDIENTE"
     if horas_txt in ["", None]:

@@ -9,6 +9,7 @@ from pricing_engine import calcular_precio
 from maps import geocode, route
 from map_image import generar_mapa_static
 from pricing_engine import calcular_precio, calcular_cotizacion_flotilla
+from pricing_engine import resumen_flotilla
 
 
 
@@ -438,9 +439,11 @@ def procesar_flujo(to, texto, texto_lower):
                         f"- {item['vehiculo']} ({item['pasajeros_asignados']} pax): ${item['precio_final']}"
                     )
 
-                u["Vehiculo"] = "FLOTILLA"
-                u["Precio"] = round(resultado["precio_final_total"], 0)
+
+                u["Vehiculo"] = resumen_flotilla(resultado["items"])
+                u["Precio"] = resultado["precio_final_total"]
                 u["Detalle Vehiculos"] = "\n".join(detalle_txt)
+
 
 
             # 5. Guardar en usuario
