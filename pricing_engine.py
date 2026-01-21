@@ -6,7 +6,7 @@ COSTOS = {
     "bus": {"km": 1190, "hora": 13080},
 }
 
-MARGEN = 0.35  # 35%
+MARGEN = 0.40  # 40%
 
 # Capacidades referenciales (puedes ajustarlas si tu flota real cambia)
 CAPACIDADES = {
@@ -134,3 +134,40 @@ def calcular_cotizacion_flotilla(km_total: float, horas_total: float, pasajeros:
         "utilidad_total": round(total_utilidad),
         "precio_final_total": round(total_precio_final),
     }
+
+
+def resumen_flotilla(items: list[dict]) -> str:
+    """
+    Convierte items de flotilla a un resumen corto y claro.
+    Ejemplos:
+    - 2 buses => "2 buses (45 pax c/u)"
+    - bus + van => "1 bus (45 pax c/u) + 1 van (15 pax c/u)"
+    """
+
+    if not items:
+        return ""
+
+    capacidades = {"van": 15, "taxibus": 30, "bus": 45}
+
+    def nombre_vehiculo(v: str, n: int) -> str:
+        if n == 1:
+            return v
+        if v == "bus":
+            return "buses"
+        return v + "s"
+
+    # Agrupar por tipo
+    conteo = {}
+    for it in items:
+        v = it.get("vehiculo", "")
+        conteo[v] = conteo.get(v, 0) + 1
+
+    partes = []
+    for v in ["bus", "taxibus", "van"]:  # orden lógico
+        if v in conteo:
+            n = conteo[v]
+            cap = capacidades.get(v, "")
+            partes.append(f"{n} {nombre_vehiculo(v, n)} ({cap} pax c/u)")
+
+    return " + ".join(partes)
+
