@@ -412,34 +412,34 @@ def procesar_flujo(to, texto, texto_lower):
 
 
 
-# 4. Pricing
-if u["Pasajeros"] <= 45:
-    resultado = calcular_precio(
-        km_total=km_total,
-        horas_total=horas_total,
-        pasajeros=u["Pasajeros"]
-    )
-    u["Vehiculo"] = resultado["vehiculo"]
-    u["Precio"] = resultado["precio_final"]
-    u["Detalle Vehiculos"] = ""  # para no romper tu PDF si no lo usa
+            # 4. Pricing
+            if u["Pasajeros"] <= 45:
+                resultado = calcular_precio(
+                    km_total=km_total,
+                    horas_total=horas_total,
+                    pasajeros=u["Pasajeros"]
+                )
+                u["Vehiculo"] = resultado["vehiculo"]
+                u["Precio"] = resultado["precio_final"]
+                u["Detalle Vehiculos"] = ""  # para no romper tu PDF si no lo usa
 
-else:
-    resultado = calcular_cotizacion_flotilla(
-        km_total=km_total,
-        horas_total=horas_total,
-        pasajeros=u["Pasajeros"]
-    )
+            else:
+                resultado = calcular_cotizacion_flotilla(
+                    km_total=km_total,
+                    horas_total=horas_total,
+                    pasajeros=u["Pasajeros"]
+                )
 
-    # Texto “humano” del detalle
-    detalle_txt = []
-    for item in resultado["items"]:
-        detalle_txt.append(
-            f"- {item['vehiculo']} ({item['pasajeros_asignados']} pax): ${item['precio_final']}"
-        )
+                # Texto “humano” del detalle
+                detalle_txt = []
+                for item in resultado["items"]:
+                    detalle_txt.append(
+                        f"- {item['vehiculo']} ({item['pasajeros_asignados']} pax): ${item['precio_final']}"
+                )
 
-    u["Vehiculo"] = "FLOTILLA"
-    u["Precio"] = resultado["precio_final_total"]
-    u["Detalle Vehiculos"] = "\n".join(detalle_txt)
+                u["Vehiculo"] = "FLOTILLA"
+                u["Precio"] = resultado["precio_final_total"]
+                u["Detalle Vehiculos"] = "\n".join(detalle_txt)
 
             # 5. Guardar en usuario
             u["KM Total"] = round(km_total, 2)
