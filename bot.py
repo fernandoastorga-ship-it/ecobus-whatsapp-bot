@@ -8,7 +8,7 @@ from datetime import datetime, date
 from pricing_engine import calcular_precio
 from maps import geocode, route
 from map_image import generar_mapa_static
-from pricing_engine import calcular_cotizacion_flotilla
+from pricing_engine import calcular_precio, calcular_cotizacion_flotilla
 
 
 
@@ -410,13 +410,36 @@ def procesar_flujo(to, texto, texto_lower):
                 print("⚠️ No se pudo generar imagen del mapa:", e)
                 u["Mapa Ruta"] = ""
 
-            # 4. Pricing (FLOTILLA)
-            resultado = calcular_cotizacion_flotilla(
-                km_total=km_total,
-                horas_total=horas_total,
-                pasajeros=u["Pasajeros"],
-                margen=0.35
-            )
+
+
+# 4. Pricing
+if u["Pasajeros"] <= 45:
+    resultado = calcular_precio(
+        km_total=km_total,
+        horas_total=horas_total,
+        pasajeros=u["Pasajeros"]
+    )
+    u["Vehiculo"] = resultado["vehiculo"]
+    u["Precio"] = resultado["precio_final"]
+    u["Detalle Vehiculos"] = ""  # para no romper tu PDF si no lo usa
+
+else:
+    resultado = calcular_cotizacion_flotilla(
+        km_total=km_total,
+        horas_total=horas_total,
+        pasajeros=u["Pasajeros"]
+    )
+
+    # Texto “humano” del detalle
+    detalle_txt = []
+    for item in resultado["items"]:
+        detalle_txt.append(
+            f"- {item['vehiculo']} ({item['pasajeros_asignados']} pax): ${item['precio_final']}"
+        )
+
+    u["Vehiculo"] = "FLOTILLA"
+    u["Precio"] = resultado["precio_final_total"]
+    u["Detalle Vehiculos"] = "\n".join(detalle_txt)
 
             # 5. Guardar en usuario
             u["KM Total"] = round(km_total, 2)
