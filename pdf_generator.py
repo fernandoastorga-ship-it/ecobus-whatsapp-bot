@@ -67,9 +67,9 @@ def generar_pdf_cotizacion(usuario: dict) -> str:
     if horas_txt in ["", None]:
         horas_txt = "PENDIENTE"
 
-c.drawString(2 * cm, y, f"KM estimados (total): {km_txt}")
-y -= 0.45 * cm
-c.drawString(2 * cm, y, f"Horas estimadas (total): {horas_txt}")
+    c.drawString(2 * cm, y, f"KM estimados (total): {km_txt}")
+    y -= 0.45 * cm
+    c.drawString(2 * cm, y, f"Horas estimadas (total): {horas_txt}")
 
     y -= 0.45 * cm
     c.drawString(2 * cm, y, f"Horas estimadas (total): {usuario.get('Horas Total', '')}")
