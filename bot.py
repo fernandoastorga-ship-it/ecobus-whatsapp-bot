@@ -435,28 +435,25 @@ def procesar_flujo(to, texto, texto_lower):
                 for item in resultado["items"]:
                     detalle_txt.append(
                         f"- {item['vehiculo']} ({item['pasajeros_asignados']} pax): ${item['precio_final']}"
-                )
+                    )
 
                 u["Vehiculo"] = "FLOTILLA"
-                u["Precio"] = resultado["precio_final_total"]
+                u["Precio"] = round(resultado["precio_final_total"], 0)
                 u["Detalle Vehiculos"] = "\n".join(detalle_txt)
 
-            # 5. Guardar en usuario
-            u["KM Total"] = round(km_total, 2)
-            u["Horas Total"] = round(horas_total, 2)
 
+            # 5. Guardar en usuario
             # ✅ Detalle por vehículo y total
-            u["Detalle Vehiculos"] = resultado["detalle"]
-            u["Precio"] = round(resultado["total_final"], 0)
+            u["Detalle Vehiculos"] = resultado["items"]
+            u["Precio"] = round(resultado["precio_final_total"], 0)
 
             # ✅ Etiqueta general de vehículo
-            if len(resultado["detalle"]) == 1:
-                u["Vehiculo"] = resultado["detalle"][0]["vehiculo"]
+            if len(resultado["items"]) == 1:
+                u["Vehiculo"] = resultado["items"][0]["vehiculo"]
             else:
                 u["Vehiculo"] = "MULTI"
 
             u["Error Cotizacion"] = ""
-
 
         except Exception as e:
             print("❌ Error cotizando:", e)
