@@ -394,10 +394,12 @@ def procesar_flujo(to, texto, texto_lower):
             km_total = km_ida + km_vuelta
             horas_total = horas_ida + horas_vuelta
 
-            # ✅ Guardar polyline para mapa
+            u["KM Total"] = round(km_total, 2)
+            u["Horas Total"] = round(horas_total, 2)
+
+
             u["Polyline Ida"] = poly_ida
 
-            # ✅ Generar imagen del mapa (para insertarlo en PDF)
             try:
                 ruta_img = generar_mapa_static(
                     (lat_o, lon_o),
@@ -409,7 +411,6 @@ def procesar_flujo(to, texto, texto_lower):
             except Exception as e:
                 print("⚠️ No se pudo generar imagen del mapa:", e)
                 u["Mapa Ruta"] = ""
-
 
 
             # 4. Pricing

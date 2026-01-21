@@ -59,7 +59,18 @@ def generar_pdf_cotizacion(usuario: dict) -> str:
     c.setFont("Helvetica", 10)
     c.drawString(2 * cm, y, f"Vehículo sugerido: {usuario.get('Vehiculo', '')}")
     y -= 0.45 * cm
-    c.drawString(2 * cm, y, f"KM estimados (total): {usuario.get('KM Total', '')}")
+    km_txt = usuario.get("KM Total", "")
+    horas_txt = usuario.get("Horas Total", "")
+
+    if km_txt in ["", None]:
+        km_txt = "PENDIENTE"
+    if horas_txt in ["", None]:
+        horas_txt = "PENDIENTE"
+
+c.drawString(2 * cm, y, f"KM estimados (total): {km_txt}")
+y -= 0.45 * cm
+c.drawString(2 * cm, y, f"Horas estimadas (total): {horas_txt}")
+
     y -= 0.45 * cm
     c.drawString(2 * cm, y, f"Horas estimadas (total): {usuario.get('Horas Total', '')}")
     y -= 0.65 * cm
