@@ -433,15 +433,35 @@ def procesar_flujo(to, texto, texto_lower):
                 )
 
 
-                # Texto “humano” del detalle (uno por línea)
+                # Texto “humano” del detalle (uno por línea) + resumen para no mostrar "MULTI"
                 detalle_txt = []
-                for item in resultado["items"]:
-                    detalle_txt.append(
-                        f"- {item['vehiculo'].upper()} ({item['pasajeros_asignados']} pax): ${item['precio_final']}"
-                    )
 
+                for item in resultado["items"]:
+                    veh = item.get("vehiculo", "")
+                    pax = item.get("pasajeros_asignados", 0)
+                    precio_item = item.get("precio_final", 0)
+
+                    # Nombre bonito (Bus/Van/Taxibus)
+                    if veh == "bus":
+                        nombre = "Bus"
+                    elif veh == "van":
+                        nombre = "Van"
+                    elif veh == "taxibus":
+                        nombre = "Taxibus"
+                    else:
+                        nombre = str(veh).capitalize()
+
+                    # Línea limpia por vehículo (incluye precio por vehículo como tú querías)
+                    detalle_txt.append(f"- {nombre} de {pax} pasajeros: ${precio_item}")
+
+                # ✅ Vehiculo: resumen tipo "2 Buses + 1 Van" (NO "MULTI")
+                # Si no tienes resumen_flotilla en pricing_engine, te dejo función abajo.
                 u["Vehiculo"] = resumen_flotilla(resultado["items"])
+
+                # ✅ Precio total final (igual que antes)
                 u["Precio"] = resultado["precio_final_total"]
+
+                # ✅ Detalle limpio para el PDF (NO diccionario feo)
                 u["Detalle Vehiculos"] = "\n".join(detalle_txt)
 
 
