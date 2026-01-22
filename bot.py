@@ -439,6 +439,12 @@ def procesar_flujo(to, texto, texto_lower):
                         f"- {item['vehiculo']} ({item['pasajeros_asignados']} pax): ${item['precio_final']}"
                     )
 
+                # Texto “humano” del detalle (uno por línea)
+                detalle_txt = []
+                for item in resultado["items"]:
+                    detalle_txt.append(
+                        f"- {item['vehiculo'].upper()} ({item['pasajeros_asignados']} pax): ${item['precio_final']}"
+                    )
 
                 u["Vehiculo"] = resumen_flotilla(resultado["items"])
                 u["Precio"] = resultado["precio_final_total"]
