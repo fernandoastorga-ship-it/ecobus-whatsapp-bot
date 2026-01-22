@@ -31,9 +31,9 @@ def generar_pdf_cotizacion(usuario: dict) -> str:
     c.setFont("Helvetica", 10)
     c.drawString(2 * cm, y, f"Nombre: {usuario.get('Nombre', '')}")
     y -= 0.45 * cm
-# ✅ Detalle por vehículo si existe (flotilla)
-detalle_vehiculos = usuario.get("Detalle Vehiculos", "").strip()
-if detalle_vehiculos:
+    # ✅ Detalle por vehículo si existe (flotilla)
+    detalle_vehiculos = usuario.get("Detalle Vehiculos", "").strip()
+    if detalle_vehiculos:
     y -= 0.2 * cm
     c.setFont("Helvetica", 10)
     c.drawString(2 * cm, y, "Detalle por vehículo:")
