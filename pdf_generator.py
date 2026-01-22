@@ -24,6 +24,9 @@ def generar_pdf_cotizacion(usuario: dict) -> str:
 
     y = height - 4.5 * cm
 
+    # -------------------------
+    # Datos solicitante
+    # -------------------------
     c.setFont("Helvetica-Bold", 11)
     c.drawString(2 * cm, y, "Datos del solicitante")
     y -= 0.6 * cm
@@ -31,32 +34,13 @@ def generar_pdf_cotizacion(usuario: dict) -> str:
     c.setFont("Helvetica", 10)
     c.drawString(2 * cm, y, f"Nombre: {usuario.get('Nombre', '')}")
     y -= 0.45 * cm
-    # ✅ Detalle por vehículo si existe (flotilla)
- detalle_vehiculos_raw = usuario.get("Detalle Vehiculos", "")
-
-    # ✅ Si viene como lista, la convertimos a texto
-    if isinstance(detalle_vehiculos_raw, list):
-        detalle_vehiculos = "\n".join(str(x) for x in detalle_vehiculos_raw).strip()
-    else:
-        detalle_vehiculos = str(detalle_vehiculos_raw).strip()
-
-    if detalle_vehiculos:
-        y -= 0.2 * cm
-        c.setFont("Helvetica", 10)
-        c.drawString(2 * cm, y, "Detalle por vehículo:")
-        y -= 0.5 * cm
-
-        c.setFont("Helvetica", 10)
-        for linea in detalle_vehiculos.split("\n"):
-            c.drawString(2 * cm, y, linea)
-            y -= 0.45 * cm
-
-        y -= 0.2 * cm
-
     c.drawString(2 * cm, y, f"Correo: {usuario.get('Correo', '')}")
     y -= 0.45 * cm
     c.drawString(2 * cm, y, f"Teléfono: {usuario.get('Telefono', '')}")
 
+    # -------------------------
+    # Detalle viaje
+    # -------------------------
     y -= 0.8 * cm
     c.setFont("Helvetica-Bold", 11)
     c.drawString(2 * cm, y, "Detalle del viaje")
@@ -73,35 +57,59 @@ def generar_pdf_cotizacion(usuario: dict) -> str:
     y -= 0.45 * cm
     c.drawString(2 * cm, y, f"Horario: {usuario.get('Hora Ida', '')} - {usuario.get('Hora Regreso', '')}")
 
+    # -------------------------
+    # Estimación automática
+    # -------------------------
     y -= 0.8 * cm
     c.setFont("Helvetica-Bold", 11)
     c.drawString(2 * cm, y, "Estimación automática")
     y -= 0.6 * cm
 
     c.setFont("Helvetica", 10)
-    c.drawString(2 * cm, y, f"Vehículo sugerido: {usuario.get('Vehiculo', '')}")
-    y -= 0.45 * cm
+
+    vehiculo_txt = usuario.get("Vehiculo", "")
     km_txt = usuario.get("KM Total", "")
     horas_txt = usuario.get("Horas Total", "")
+    precio_txt = usuario.get("Precio", "")
 
-
-    if km_txt in ["", None]:
-        km_txt = "PENDIENTE"
-    if horas_txt in ["", None]:
-        horas_txt = "PENDIENTE"
-
+    c.drawString(2 * cm, y, f"Vehículo sugerido: {vehiculo_txt}")
+    y -= 0.45 * cm
     c.drawString(2 * cm, y, f"KM estimados (total): {km_txt}")
     y -= 0.45 * cm
     c.drawString(2 * cm, y, f"Horas estimadas (total): {horas_txt}")
+    y -= 0.6 * cm
 
-    y -= 0.45 * cm
-    c.drawString(2 * cm, y, f"Horas estimadas (total): {usuario.get('Horas Total', '')}")
-    y -= 0.65 * cm
+    # -------------------------
+    # Detalle por vehículos (si existe)
+    # -------------------------
+    detalle_raw = usuario.get("Detalle Vehiculos", "")
 
+    if isinstance(detalle_raw, list):
+        detalle_txt = "\n".join(str(x) for x in detalle_raw).strip()
+    else:
+        detalle_txt = str(detalle_raw).strip()
+
+    if detalle_txt:
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(2 * cm, y, "Detalle vehículos sugeridos:")
+        y -= 0.5 * cm
+
+        c.setFont("Helvetica", 10)
+        for linea in detalle_txt.split("\n"):
+            c.drawString(2.3 * cm, y, linea)
+            y -= 0.4 * cm
+
+        y -= 0.2 * cm
+
+    # -------------------------
+    # Total
+    # -------------------------
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(2 * cm, y, f"TOTAL ESTIMADO: ${usuario.get('Precio', '')}")
+    c.drawString(2 * cm, y, f"TOTAL ESTIMADO: ${precio_txt}")
 
-    # ✅ MAPA dentro del PDF
+    # -------------------------
+    # MAPA dentro del PDF
+    # -------------------------
     y -= 1.2 * cm
     ruta_img = usuario.get("Mapa Ruta", "")
 
@@ -135,6 +143,9 @@ def generar_pdf_cotizacion(usuario: dict) -> str:
         c.drawString(2 * cm, y, "(Mapa no disponible para esta cotización)")
         y -= 0.6 * cm
 
+    # -------------------------
+    # Footer
+    # -------------------------
     c.setFont("Helvetica", 9)
     c.drawString(2 * cm, 2.2 * cm, "Cotización referencial. Puede variar por desvíos, esperas o condiciones operacionales.")
     c.drawString(2 * cm, 1.7 * cm, "Para confirmar disponibilidad y reserva, responda este correo.")
