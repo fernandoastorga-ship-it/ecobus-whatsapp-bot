@@ -432,12 +432,6 @@ def procesar_flujo(to, texto, texto_lower):
                     pasajeros=u["Pasajeros"]
                 )
 
-                # Texto “humano” del detalle
-                detalle_txt = []
-                for item in resultado["items"]:
-                    detalle_txt.append(
-                        f"- {item['vehiculo']} ({item['pasajeros_asignados']} pax): ${item['precio_final']}"
-                    )
 
                 # Texto “humano” del detalle (uno por línea)
                 detalle_txt = []
