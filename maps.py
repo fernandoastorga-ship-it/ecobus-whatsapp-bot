@@ -1,6 +1,10 @@
 import os
 import requests
 from urllib.parse import quote
+import re
+
+from lugares_conocidos import LUGARES_CONOCIDOS
+# from comunas_rm import COMUNAS_RM  # ⚠️ no se usa porque aquí se redefine
 
 MAPBOX_TOKEN = os.getenv("MAPBOX_TOKEN")
 ORS_API_KEY = os.getenv("ORS_API_KEY")
@@ -40,6 +44,34 @@ def _clean_text(s: str) -> str:
 def _contains_any(text: str, words: list[str]) -> bool:
     t = (text or "").lower()
     return any(w in t for w in words)
+def _normalizar_key(txt: str) -> str:
+    txt = (txt or "").strip().lower()
+    txt = re.sub(r"\s+", " ", txt)
+    return txt
+
+
+def _buscar_lugar_conocido(direccion: str):
+    """
+    Busca primero en lugares_conocidos.py.
+    - Match exacto
+    - Match por contención (ej: "acuapark el idilio peñaflor" contiene "acuapark el idilio")
+    Retorna (lat, lon) o None
+    """
+    d_norm = _normalizar_key(direccion)
+
+    # 1) Match exacto
+    if d_norm in LUGARES_CONOCIDOS:
+        lat, lon = LUGARES_CONOCIDOS[d_norm]
+        return float(lat), float(lon)
+
+    # 2) Match flexible: si la clave está contenida en lo que escribió el usuario
+    for k, coords in LUGARES_CONOCIDOS.items():
+        k_norm = _normalizar_key(k)
+        if k_norm and k_norm in d_norm:
+            lat, lon = coords
+            return float(lat), float(lon)
+
+    return None
 
 
 def geocode(direccion: str):
@@ -54,6 +86,14 @@ def geocode(direccion: str):
 
     direccion_original = direccion
     d = _clean_text(direccion)
+
+    # ✅ 0) PRIORIDAD: lugares conocidos (Acuapark, terminales, metro, etc.)
+    hit = _buscar_lugar_conocido(direccion_original)
+    if hit:
+        lat, lon = hit
+        print("📍 Geocode FORZADO (LUGAR CONOCIDO):", direccion_original, "=>", (lat, lon))
+        return lat, lon
+
 
     # ✅ 1) FORZAR comunas RM conocidas (tu caso crítico)
     if d in COMUNAS_RM:
