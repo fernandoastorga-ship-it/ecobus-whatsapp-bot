@@ -2,6 +2,7 @@ import os
 import requests
 from urllib.parse import quote
 import re
+import difflib
 
 from lugares_conocidos import LUGARES_CONOCIDOS
 # from comunas_rm import COMUNAS_RM  # ⚠️ no se usa porque aquí se redefine
@@ -38,7 +39,11 @@ V_HINTS = [
 
 
 def _clean_text(s: str) -> str:
-    return (s or "").strip().lower()
+    s = (s or "").strip().lower()
+    s = s.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n")
+    s = re.sub(r"[^\w\s]", " ", s)  # saca signos
+    s = re.sub(r"\s+", " ", s)
+    return s
 
 
 def _contains_any(text: str, words: list[str]) -> bool:
@@ -48,30 +53,69 @@ def _normalizar_key(txt: str) -> str:
     txt = (txt or "").strip().lower()
     txt = re.sub(r"\s+", " ", txt)
     return txt
+def _tokens(txt: str) -> list[str]:
+    return [t for t in _clean_text(txt).split() if t]
 
 
-def _buscar_lugar_conocido(direccion: str):
+def _sim(a: str, b: str) -> float:
+    # Similaridad tolerante a faltas de ortografía
+    return difflib.SequenceMatcher(None, _clean_text(a), _clean_text(b)).ratio()
+
+
+def _buscar_lugar_conocido_fuzzy(direccion: str):
     """
-    Busca primero en lugares_conocidos.py.
-    - Match exacto
-    - Match por contención (ej: "acuapark el idilio peñaflor" contiene "acuapark el idilio")
-    Retorna (lat, lon) o None
+    Matching inteligente para lugares_conocidos:
+    - Coincidencia exacta (normalizada)
+    - Coincidencia por tokens (parcial)
+    - Fuzzy match (errores ortográficos)
+    Retorna (lat, lon, key_match, score) o None
     """
-    d_norm = _normalizar_key(direccion)
+    d = _clean_text(direccion)
 
-    # 1) Match exacto
-    if d_norm in LUGARES_CONOCIDOS:
-        lat, lon = LUGARES_CONOCIDOS[d_norm]
-        return float(lat), float(lon)
+    if not d:
+        return None
 
-    # 2) Match flexible: si la clave está contenida en lo que escribió el usuario
+    # 1) exact match
+    if d in LUGARES_CONOCIDOS:
+        lat, lon = LUGARES_CONOCIDOS[d]
+        return float(lat), float(lon), d, 1.0
+
+    # Preparar tokens del input
+    dtoks = set(_tokens(d))
+
+    mejor = None  # (lat, lon, key, score)
+
     for k, coords in LUGARES_CONOCIDOS.items():
-        k_norm = _normalizar_key(k)
-        if k_norm and k_norm in d_norm:
-            lat, lon = coords
-            return float(lat), float(lon)
+        k_norm = _clean_text(k)
+        ktoks = set(_tokens(k_norm))
 
-    return None
+        score = 0.0
+
+        # 2) match por contención (si escribió parte del nombre)
+        if k_norm in d or d in k_norm:
+            score += 0.85
+
+        # 3) match por tokens (ej: "acupark" debería matchear "acuapark el idilio")
+        if dtoks and ktoks:
+            inter = len(dtoks.intersection(ktoks))
+            union = len(dtoks.union(ktoks))
+            jaccard = inter / union if union else 0.0
+            score += (jaccard * 0.75)
+
+        # 4) fuzzy para errores ortográficos (talGante / tlagante / talgante)
+        score += (_sim(d, k_norm) * 0.90)
+
+        # Penaliza matches muy débiles
+        if score < 0.70:
+            continue
+
+        lat, lon = coords
+        candidato = (float(lat), float(lon), k_norm, score)
+
+        if (mejor is None) or (candidato[3] > mejor[3]):
+            mejor = candidato
+
+    return mejor
 
 
 def geocode(direccion: str):
@@ -87,19 +131,19 @@ def geocode(direccion: str):
     direccion_original = direccion
     d = _clean_text(direccion)
 
-    # ✅ 0) PRIORIDAD: lugares conocidos (Acuapark, terminales, metro, etc.)
-    hit = _buscar_lugar_conocido(direccion_original)
+    # ✅ 0) PRIORIDAD: lugares conocidos con fuzzy matching
+    hit = _buscar_lugar_conocido_fuzzy(direccion_original)
     if hit:
-        lat, lon = hit
-        print("📍 Geocode FORZADO (LUGAR CONOCIDO):", direccion_original, "=>", (lat, lon))
+        lat, lon, k_match, score = hit
+        print("📍 Geocode FORZADO (LUGAR CONOCIDO - FUZZY):", direccion_original, "=>", (lat, lon), "| match:", k_match, "| score:", round(score, 3))
         return lat, lon
-
 
     # ✅ 1) FORZAR comunas RM conocidas (tu caso crítico)
     if d in COMUNAS_RM:
         lat, lon = COMUNAS_RM[d]
         print("📍 Geocode FORZADO (RM):", direccion_original, "=>", (lat, lon))
         return lat, lon
+
 
     # ✅ 2) Fallback Mapbox
     if not MAPBOX_TOKEN:
@@ -119,8 +163,16 @@ def geocode(direccion: str):
         "limit": 8,
         "language": "es",
         "autocomplete": "true",
-        "proximity": "-70.6693,-33.4489"
+        "proximity": "-70.6693,-33.4489",
+
+        # ✅ Evita resultados fuera de Chile (bounding box Chile aprox)
+        # [minLon, minLat, maxLon, maxLat]
+        "bbox": "-75,-56,-66,-17",
+
+        # ✅ Reduce resultados ambiguos (menos riesgo de lugares random)
+        "types": "place,locality,neighborhood,address,poi"
     }
+
 
     r = requests.get(url, params=params, timeout=15)
     data = r.json()
@@ -180,7 +232,13 @@ def geocode(direccion: str):
     print("📍 Geocode elegido:", best.get("place_name"))
 
     lon, lat = best["center"]
+
+    # ✅ Fail-safe: si sale fuera de Chile, rechazamos
+    if not (-56 <= lat <= -17 and -75 <= lon <= -66):
+        raise Exception(f"Geocoding fuera de Chile para '{direccion_original}': lat={lat}, lon={lon}, elegido={best.get('place_name')}")
+
     return lat, lon
+
 
 
 def route(origen, destino):
