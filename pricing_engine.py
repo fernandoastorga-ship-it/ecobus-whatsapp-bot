@@ -14,6 +14,14 @@ CAPACIDADES = {
     "taxibus": 30,
     "bus": 45
 }
+# ✅ Castigo para viajes cortos (margen extra)
+KM_UMBRAL_CORTO = 60
+
+# Margen adicional por ser un viaje corto (se suma al margen base)
+MARGEN_EXTRA_CORTO = 0.25   # +25% adicional (queda 65% total si MARGEN=40%)
+
+# Máximo margen total permitido (para evitar cosas absurdas)
+MARGEN_MAXIMO = 0.85
 
 
 def vehiculo_por_pasajeros(pasajeros: int) -> str:
@@ -39,8 +47,15 @@ def calcular_precio(km_total: float, horas_total: float, pasajeros: int) -> dict
     costos = COSTOS[vehiculo]
 
     costo_base = (km_total * costos["km"]) + (horas_total * costos["hora"])
-    utilidad = costo_base * MARGEN
+
+    # ✅ Margen dinámico: castigo si km_total < 60
+    margen_aplicado = MARGEN
+    if km_total < KM_UMBRAL_CORTO:
+        margen_aplicado = min(MARGEN + MARGEN_EXTRA_CORTO, MARGEN_MAXIMO)
+
+    utilidad = costo_base * margen_aplicado
     precio_final = costo_base + utilidad
+
 
     return {
         "vehiculo": vehiculo,
@@ -59,7 +74,13 @@ def _calcular_precio_por_vehiculo(km_total: float, horas_total: float, vehiculo:
     costos = COSTOS[vehiculo]
 
     costo_base = (km_total * costos["km"]) + (horas_total * costos["hora"])
-    utilidad = costo_base * MARGEN
+
+    # ✅ Margen dinámico: castigo si km_total < 60
+    margen_aplicado = MARGEN
+    if km_total < KM_UMBRAL_CORTO:
+        margen_aplicado = min(MARGEN + MARGEN_EXTRA_CORTO, MARGEN_MAXIMO)
+
+    utilidad = costo_base * margen_aplicado
     precio_final = costo_base + utilidad
 
     return {
