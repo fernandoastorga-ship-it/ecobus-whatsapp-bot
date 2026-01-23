@@ -72,7 +72,7 @@ def generar_pdf_cotizacion(usuario: dict) -> str:
     horas_txt = usuario.get("Horas Total", "")
     precio_txt = usuario.get("Precio", "")
 
-    c.drawString(2 * cm, y, f"Vehículo sugerido: {vehiculo_txt}")
+    c.drawString(2 * cm, y, f"Vehículo/s sugerido/s: {vehiculo_txt}")
     y -= 0.45 * cm
     c.drawString(2 * cm, y, f"KM estimados (total): {km_txt}")
     y -= 0.45 * cm

@@ -466,18 +466,46 @@ def procesar_flujo(to, texto, texto_lower):
 
 
 
-            # 5. Guardar en usuario
-            # ✅ Detalle por vehículo y total
-            u["Detalle Vehiculos"] = resultado["items"]
-            u["Precio"] = round(resultado["precio_final_total"], 0)
+            # 5. Guardar en usuario (NO pisar el detalle humano ni poner MULTI)
+            # ✅ Precio total final
+            if "precio_final_total" in resultado:
+                u["Precio"] = round(resultado["precio_final_total"], 0)
 
-            # ✅ Etiqueta general de vehículo
-            if len(resultado["items"]) == 1:
-                u["Vehiculo"] = resultado["items"][0]["vehiculo"]
-            else:
-                u["Vehiculo"] = "MULTI"
+            # ✅ Vehículo: si es flotilla usar resumen bonito, si es 1 vehículo usar nombre normal
+            items = resultado.get("items", [])
+
+            if len(items) == 1:
+                u["Vehiculo"] = items[0].get("vehiculo", "")
+            elif len(items) > 1:
+                # Resumen bonito tipo: "1 bus (45 pax c/u) + 1 van (15 pax c/u)"
+                u["Vehiculo"] = resumen_flotilla(items)
+
+            # ✅ IMPORTANTE:
+            # NO guardar lista/dict en "Detalle Vehiculos", porque el PDF lo imprime feo.
+            # Aquí dejamos lo que ya se armó arriba como texto humano.
+            # Si por algún motivo no existe, lo armamos aquí mismo.
+            if not isinstance(u.get("Detalle Vehiculos", ""), str) or not u.get("Detalle Vehiculos", "").strip():
+                detalle_txt = []
+                for item in items:
+                    veh = item.get("vehiculo", "")
+                    pax = item.get("pasajeros_asignados", 0)
+                    precio_item = item.get("precio_final", 0)
+
+                    if veh == "bus":
+                        nombre = "Bus"
+                    elif veh == "van":
+                        nombre = "Van"
+                    elif veh == "taxibus":
+                        nombre = "Taxibus"
+                    else:
+                        nombre = str(veh).capitalize()
+
+                    detalle_txt.append(f"- {nombre} de {pax} pasajeros: ${precio_item}")
+
+                u["Detalle Vehiculos"] = "\n".join(detalle_txt)
 
             u["Error Cotizacion"] = ""
+
 
         except Exception as e:
             print("❌ Error cotizando:", e)
