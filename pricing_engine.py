@@ -6,6 +6,14 @@ COSTOS = {
     "bus": {"km": 1190, "hora": 13080},
 }
 
+# ✅ Precio mínimo por salida (para evitar viajes cortos demasiado baratos)
+MINIMOS_SALIDA = {
+    "van": 50000,
+    "taxibus": 55000,
+    "bus": 60000
+}
+
+
 MARGEN = 0.40  # 40%
 
 # Capacidades referenciales (puedes ajustarlas si tu flota real cambia)
@@ -56,6 +64,11 @@ def calcular_precio(km_total: float, horas_total: float, pasajeros: int) -> dict
     utilidad = costo_base * margen_aplicado
     precio_final = costo_base + utilidad
 
+    # ✅ AÑADIDO: mínimo por salida si el viaje es corto
+    if km_total < KM_UMBRAL_CORTO:
+        minimo = MINIMOS_SALIDA.get(vehiculo, 0)
+        if precio_final < minimo:
+            precio_final = minimo
 
     return {
         "vehiculo": vehiculo,
@@ -82,6 +95,12 @@ def _calcular_precio_por_vehiculo(km_total: float, horas_total: float, vehiculo:
 
     utilidad = costo_base * margen_aplicado
     precio_final = costo_base + utilidad
+
+    # ✅ AÑADIDO: mínimo por salida por vehículo si el viaje es corto
+    if km_total < KM_UMBRAL_CORTO:
+        minimo = MINIMOS_SALIDA.get(vehiculo, 0)
+        if precio_final < minimo:
+            precio_final = minimo
 
     return {
         "vehiculo": vehiculo,
@@ -191,4 +210,5 @@ def resumen_flotilla(items: list[dict]) -> str:
             partes.append(f"{n} {nombre_vehiculo(v, n)} ({cap} pax c/u)")
 
     return " + ".join(partes)
+
 
