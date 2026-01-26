@@ -8,5 +8,9 @@ LUGARES_CONOCIDOS = {
     "aeropuerto santiago": (-33.3929, -70.7858),
     "aeropuerto arturo merino benitez": (-33.3929, -70.7858),
     "acuapark el idilio": (-33.597957, -70.887333),
+    "cerro san cristobal": (-33.425138 -70.632906),
+    "mall plaza oeste": (-33.5178415 -70.7173664),
+
+    
 }
 
