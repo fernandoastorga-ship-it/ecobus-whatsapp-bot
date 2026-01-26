@@ -6,7 +6,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, date
 from pricing_engine import calcular_precio
-from maps import geocode, route
+from maps import geocode, route, geocode_candidates
 from map_image import generar_mapa_static
 from pricing_engine import calcular_precio, calcular_cotizacion_flotilla
 from pricing_engine import resumen_flotilla
@@ -349,14 +349,104 @@ def procesar_flujo(to, texto, texto_lower):
     # -------- ORIGEN --------
     if estado == "origen":
         u["Origen"] = texto
+
+        # ✅ Buscar candidatos para confirmar dirección
+        try:
+            candidatos = geocode_candidates(texto, limit=3)
+        except Exception as e:
+            print("⚠️ Error geocode_candidates origen:", e)
+            candidatos = []
+
+        # Si encontró 2 o más opciones, pedir confirmación
+        if len(candidatos) >= 2:
+            u["candidatos_origen"] = candidatos
+            u["estado"] = "confirmar_origen"
+
+            cuerpo = "📍 Confirmemos el *ORIGEN*. ¿Cuál es el correcto?"
+            botones = []
+
+            for i, cnd in enumerate(candidatos):
+                title = cnd["name"][:20]  # WhatsApp button title tiene límite
+                botones.append({"id": f"origen_opt_{i}", "title": title})
+
+            return enviar_botones(to, cuerpo, botones)
+
+        # Si encontró 1, seguimos sin preguntar
         u["estado"] = "destino"
         return enviar_texto(to, "🎯 ¿Destino?")
+
+    if estado == "confirmar_origen":
+        # El usuario eligió uno de los botones origen_opt_0,1,2
+        if texto_lower.startswith("origen_opt_"):
+            try:
+                idx = int(texto_lower.split("_")[-1])
+                candidatos = u.get("candidatos_origen", [])
+                elegido = candidatos[idx]
+
+                # Guardamos versión “bonita” del origen (texto)
+                u["Origen"] = elegido["name"]
+
+                # Guardamos coordenadas para no recalcular después
+                u["Origen Lat"] = elegido["lat"]
+                u["Origen Lon"] = elegido["lon"]
+
+                u.pop("candidatos_origen", None)
+
+                u["estado"] = "destino"
+                return enviar_texto(to, "🎯 Perfecto. ¿Destino?")
+            except Exception as e:
+                print("⚠️ Error confirmando origen:", e)
+                u["estado"] = "origen"
+                return enviar_texto(to, "⚠️ No pude confirmar el origen. Escríbelo nuevamente:")
+
 
     # -------- DESTINO --------
     if estado == "destino":
         u["Destino"] = texto
+
+        # ✅ Buscar candidatos para confirmar dirección
+        try:
+            candidatos = geocode_candidates(texto, limit=3)
+        except Exception as e:
+            print("⚠️ Error geocode_candidates destino:", e)
+            candidatos = []
+
+        if len(candidatos) >= 2:
+            u["candidatos_destino"] = candidatos
+            u["estado"] = "confirmar_destino"
+
+            cuerpo = "🎯 Confirmemos el *DESTINO*. ¿Cuál es el correcto?"
+            botones = []
+
+            for i, cnd in enumerate(candidatos):
+                title = cnd["name"][:20]
+                botones.append({"id": f"destino_opt_{i}", "title": title})
+
+            return enviar_botones(to, cuerpo, botones)
+
         u["estado"] = "ida"
         return enviar_texto(to, "🕒 Hora salida HH:MM")
+
+    if estado == "confirmar_destino":
+        if texto_lower.startswith("destino_opt_"):
+            try:
+                idx = int(texto_lower.split("_")[-1])
+                candidatos = u.get("candidatos_destino", [])
+                elegido = candidatos[idx]
+
+                u["Destino"] = elegido["name"]
+                u["Destino Lat"] = elegido["lat"]
+                u["Destino Lon"] = elegido["lon"]
+
+                u.pop("candidatos_destino", None)
+
+                u["estado"] = "ida"
+                return enviar_texto(to, "🕒 Perfecto. Hora salida HH:MM")
+            except Exception as e:
+                print("⚠️ Error confirmando destino:", e)
+                u["estado"] = "destino"
+                return enviar_texto(to, "⚠️ No pude confirmar el destino. Escríbelo nuevamente:")
+
 
     # -------- IDA --------
     if estado == "ida":
@@ -382,9 +472,17 @@ def procesar_flujo(to, texto, texto_lower):
         u["cotizacion_id"] = str(uuid.uuid4())[:8].upper()
 
         try:
-            # 1. Geocoding
-            lat_o, lon_o = geocode(u["Origen"])
-            lat_d, lon_d = geocode(u["Destino"])
+            # 1. Geocoding (si el usuario confirmó con botones, ya tenemos coords)
+            if "Origen Lat" in u and "Origen Lon" in u:
+                lat_o, lon_o = u["Origen Lat"], u["Origen Lon"]
+            else:
+                lat_o, lon_o = geocode(u["Origen"])
+
+            if "Destino Lat" in u and "Destino Lon" in u:
+                lat_d, lon_d = u["Destino Lat"], u["Destino Lon"]
+            else:
+                lat_d, lon_d = geocode(u["Destino"])
+
 
             # 2. Ruta ida (3 valores)
             km_ida, horas_ida, poly_ida = route((lat_o, lon_o), (lat_d, lon_d))

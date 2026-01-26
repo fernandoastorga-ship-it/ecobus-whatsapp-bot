@@ -327,6 +327,81 @@ def geocode(direccion: str):
                 bonus += 0.6
 
             return relevance + bonus
+def geocode_candidates(direccion: str, limit: int = 3) -> list[dict]:
+    """
+    Devuelve candidatos de Mapbox para que el bot pueda pedir confirmación al usuario.
+    Retorna lista de dicts: [{"name":..., "lat":..., "lon":...}, ...]
+    """
+    if not direccion:
+        return []
+
+    if not MAPBOX_TOKEN:
+        raise Exception("MAPBOX_TOKEN no está definido en variables de entorno")
+
+    direccion_original = direccion
+    d = _clean_text(direccion_original)
+
+    # 0) Si matchea lugar conocido, devolver uno fijo (sin molestar al usuario)
+    hit = _buscar_lugar_conocido(direccion_original) if "_buscar_lugar_conocido" in globals() else None
+    if hit:
+        lat, lon, k_match, score = hit
+        return [{"name": k_match, "lat": lat, "lon": lon}]
+
+    # 1) Variantes para reforzar Chile/Santiago en POIs típicos
+    variantes_busqueda = _expandir_consulta_chile(direccion_original) if "_expandir_consulta_chile" in globals() else [direccion_original, f"{direccion_original}, Chile"]
+
+    candidatos_finales = []
+    vistos = set()
+
+    for direccion_expandida in variantes_busqueda:
+        direccion_q = quote(direccion_expandida)
+
+        url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{direccion_q}.json"
+        params = {
+            "access_token": MAPBOX_TOKEN,
+            "country": "CL",
+            "limit": 6,
+            "language": "es",
+            "autocomplete": "true",
+            "proximity": "-70.6693,-33.4489",
+            "bbox": "-75,-56,-66,-17",
+            "types": "place,locality,neighborhood,address,poi"
+        }
+
+        r = requests.get(url, params=params, timeout=15)
+        data = r.json()
+
+        features = data.get("features", [])
+        if not features:
+            continue
+
+        for f in features:
+            try:
+                lon, lat = f["center"]
+                if not _bbox_chile(lat, lon):
+                    continue
+
+                name = f.get("place_name", "")
+                key = (round(lat, 6), round(lon, 6), name)
+
+                if key in vistos:
+                    continue
+                vistos.add(key)
+
+                candidatos_finales.append({
+                    "name": name,
+                    "lat": lat,
+                    "lon": lon
+                })
+
+                if len(candidatos_finales) >= limit:
+                    return candidatos_finales
+
+            except:
+                continue
+
+    return candidatos_finales
+
 
         candidatos.sort(key=score_feature, reverse=True)
         candidato_best = candidatos[0]
