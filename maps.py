@@ -40,8 +40,19 @@ V_HINTS = [
 
 def _clean_text(s: str) -> str:
     s = (s or "").strip().lower()
-    s = s.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n")
-    s = re.sub(r"[^\w\s]", " ", s)  # saca signos
+
+    # normaliza tildes y ñ
+    s = (
+        s.replace("á", "a")
+        .replace("é", "e")
+        .replace("í", "i")
+        .replace("ó", "o")
+        .replace("ú", "u")
+        .replace("ñ", "n")
+    )
+
+    # elimina signos raros
+    s = re.sub(r"[^\w\s]", " ", s)
     s = re.sub(r"\s+", " ", s)
     return s
 
@@ -49,6 +60,73 @@ def _clean_text(s: str) -> str:
 def _contains_any(text: str, words: list[str]) -> bool:
     t = (text or "").lower()
     return any(w in t for w in words)
+def _tokens(txt: str) -> list[str]:
+    return [t for t in _clean_text(txt).split() if t]
+
+
+def _sim(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, _clean_text(a), _clean_text(b)).ratio()
+
+
+def _buscar_lugar_conocido(direccion: str):
+    """
+    Match robusto contra LUGARES_CONOCIDOS:
+    - exact (normalizado)
+    - contains (parcial)
+    - fuzzy (errores ortográficos)
+    Retorna (lat, lon, key_match, score) o None
+    """
+    d_norm = _clean_text(direccion)
+    if not d_norm:
+        return None
+
+    # 1) exact match
+    if d_norm in LUGARES_CONOCIDOS:
+        lat, lon = LUGARES_CONOCIDOS[d_norm]
+        return float(lat), float(lon), d_norm, 1.0
+
+    dtoks = set(_tokens(d_norm))
+    mejor = None  # (lat, lon, k_norm, score)
+
+    for k, coords in LUGARES_CONOCIDOS.items():
+        k_norm = _clean_text(k)
+        if not k_norm:
+            continue
+
+        ktoks = set(_tokens(k_norm))
+        score = 0.0
+
+        # 2) contención directa (aguanta "metro baquedano" vs "baquedano")
+        if k_norm in d_norm or d_norm in k_norm:
+            score += 0.90
+
+        # 3) tokens overlap
+        if dtoks and ktoks:
+            inter = len(dtoks.intersection(ktoks))
+            union = len(dtoks.union(ktoks))
+            jaccard = inter / union if union else 0.0
+            score += jaccard * 0.80
+
+        # 4) fuzzy por faltas de ortografía
+        score += _sim(d_norm, k_norm) * 0.85
+
+        # umbral mínimo para evitar falsos positivos
+        if score < 0.72:
+            continue
+
+        lat, lon = coords
+        candidato = (float(lat), float(lon), k_norm, score)
+
+        if (mejor is None) or (candidato[3] > mejor[3]):
+            mejor = candidato
+
+    return mejor
+
+
+def _bbox_chile(lat: float, lon: float) -> bool:
+    return (-56 <= lat <= -17) and (-75 <= lon <= -66)
+
+
 def _normalizar_key(txt: str) -> str:
     txt = (txt or "").strip().lower()
     txt = re.sub(r"\s+", " ", txt)
@@ -127,15 +205,14 @@ def geocode(direccion: str):
 
     if not direccion:
         raise Exception("Dirección vacía")
-
     direccion_original = direccion
     d = _clean_text(direccion)
 
-    # ✅ 0) PRIORIDAD: lugares conocidos con fuzzy matching
-    hit = _buscar_lugar_conocido_fuzzy(direccion_original)
+    # ✅ 0) PRIORIDAD: lugares_conocidos.py (siempre primero)
+    hit = _buscar_lugar_conocido(direccion_original)
     if hit:
         lat, lon, k_match, score = hit
-        print("📍 Geocode FORZADO (LUGAR CONOCIDO - FUZZY):", direccion_original, "=>", (lat, lon), "| match:", k_match, "| score:", round(score, 3))
+        print("📍 Geocode FORZADO (LUGAR CONOCIDO):", direccion_original, "=>", (lat, lon), "| match:", k_match, "| score:", round(score, 3))
         return lat, lon
 
     # ✅ 1) FORZAR comunas RM conocidas (tu caso crítico)
@@ -143,6 +220,8 @@ def geocode(direccion: str):
         lat, lon = COMUNAS_RM[d]
         print("📍 Geocode FORZADO (RM):", direccion_original, "=>", (lat, lon))
         return lat, lon
+
+    
 
 
     # ✅ 2) Fallback Mapbox
