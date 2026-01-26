@@ -125,6 +125,38 @@ def _buscar_lugar_conocido(direccion: str):
 
 def _bbox_chile(lat: float, lon: float) -> bool:
     return (-56 <= lat <= -17) and (-75 <= lon <= -66)
+def _expandir_consulta_chile(direccion: str) -> list[str]:
+    """
+    Devuelve una lista de variantes de búsqueda (de más específica a más abierta),
+    para que Mapbox tenga más contexto y no falle con entradas incompletas.
+    """
+    base = (direccion or "").strip()
+    d = _clean_text(base)
+
+    variantes = []
+
+    # 1) Tal cual
+    if base:
+        variantes.append(base)
+
+    # 2) Si parece POI genérico, forzar Santiago/Chile
+    keywords_scl = ["mall", "cerro", "metro", "terminal", "aeropuerto", "plaza", "parque", "estadio"]
+    if any(k in d for k in keywords_scl):
+        variantes.append(f"{base}, Santiago, Chile")
+
+    # 3) Forzar Chile siempre
+    variantes.append(f"{base}, Chile")
+
+    # eliminar duplicados manteniendo orden
+    out = []
+    seen = set()
+    for v in variantes:
+        vv = v.strip()
+        if vv and vv not in seen:
+            out.append(vv)
+            seen.add(vv)
+
+    return out
 
 
 def _normalizar_key(txt: str) -> str:
@@ -228,12 +260,89 @@ def geocode(direccion: str):
     if not MAPBOX_TOKEN:
         raise Exception("MAPBOX_TOKEN no está definido en variables de entorno")
 
-    # Ayuda si es muy corto
-    direccion_expandida = direccion.strip()
-    if len(direccion_expandida.split()) <= 2:
-        direccion_expandida = f"{direccion_expandida}, Chile"
+    # ✅ Generar variantes de búsqueda (para no fallar con "mall plaza sur", "cerro manquehue", etc.)
+    variantes_busqueda = _expandir_consulta_chile(direccion_original)
 
-    direccion_q = quote(direccion_expandida)
+    best = None
+    best_score = -999
+
+    for direccion_expandida in variantes_busqueda:
+        direccion_q = quote(direccion_expandida)
+
+        url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{direccion_q}.json"
+        params = {
+            "access_token": MAPBOX_TOKEN,
+            "country": "CL",
+            "limit": 8,
+            "language": "es",
+            "autocomplete": "true",
+            "proximity": "-70.6693,-33.4489",
+            "bbox": "-75,-56,-66,-17",
+            "types": "place,locality,neighborhood,address,poi"
+        }
+
+        r = requests.get(url, params=params, timeout=15)
+        data = r.json()
+
+        features = data.get("features", [])
+        if not features:
+            continue
+
+        tipos_permitidos = {"place", "locality", "address", "poi", "neighborhood"}
+        candidatos = [f for f in features if any(t in tipos_permitidos for t in f.get("place_type", []))]
+        if not candidatos:
+            candidatos = features
+
+        texto_lower = d
+        es_quinta = _contains_any(texto_lower, V_HINTS)
+
+        def score_feature(f):
+            relevance = float(f.get("relevance", 0))
+            place_name = (f.get("place_name") or "").lower()
+            place_type = f.get("place_type", [])
+
+            bonus = 0.0
+
+            if es_quinta:
+                if _contains_any(place_name, V_HINTS):
+                    bonus += 1.0
+                if "santiago" in place_name or "region metropolitana" in place_name or "región metropolitana" in place_name:
+                    bonus -= 0.8
+
+            if "place" in place_type:
+                bonus += 0.45
+            if "locality" in place_type:
+                bonus += 0.35
+            if "address" in place_type:
+                bonus += 0.15
+            if "poi" in place_type:
+                bonus += 0.10
+
+            # penaliza “Pasaje/Calle/Avenida” si el input era muy corto
+            if len(direccion_original.strip().split()) <= 2:
+                if "pasaje" in place_name or "calle" in place_name or "avenida" in place_name:
+                    bonus -= 0.7
+
+            if d in place_name:
+                bonus += 0.6
+
+            return relevance + bonus
+
+        candidatos.sort(key=score_feature, reverse=True)
+        candidato_best = candidatos[0]
+        score_best = score_feature(candidato_best)
+
+        if score_best > best_score:
+            best_score = score_best
+            best = candidato_best
+
+            # Si ya es muy bueno, cortamos rápido
+            if best_score >= 1.40:
+                break
+
+    if not best:
+        raise Exception(f"No se pudo geocodificar: {direccion_original}")
+
 
     url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{direccion_q}.json"
     params = {
@@ -307,16 +416,16 @@ def geocode(direccion: str):
     best = candidatos[0]
 
     print("📍 Entrada geocode:", direccion_original)
-    print("📍 Expandida:", direccion_expandida)
+    print("📍 Expandida (intentos):", variantes_busqueda)
     print("📍 Geocode elegido:", best.get("place_name"))
 
     lon, lat = best["center"]
 
-    # ✅ Fail-safe: si sale fuera de Chile, rechazamos
-    if not (-56 <= lat <= -17 and -75 <= lon <= -66):
-        raise Exception(f"Geocoding fuera de Chile para '{direccion_original}': lat={lat}, lon={lon}, elegido={best.get('place_name')}")
+    if not _bbox_chile(lat, lon):
+        raise Exception(f"Geocoding fuera de Chile para '{direccion_original}': elegido={best.get('place_name')} lat={lat}, lon={lon}")
 
     return lat, lon
+
 
 
 
