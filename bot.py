@@ -235,7 +235,7 @@ def enviar_correo(usuario):
 
 # -------- MENÚ --------
 def menu_principal(to):
-    enviar_botones(to, "¡Hola! soy el bot de Ecobus. Cuentame, ¿Qué deseas hacer hoy? 🚍",
+    enviar_botones(to, "¡Hola! soy Javier , el asistente virtual de Ecobus. Cuentame, ¿Qué deseas hacer hoy? 🚍",
                    [{"id": "cotizar", "title": "Cotizar"},
                     {"id": "ejecutivo", "title": "Ejecutivo"}])
 
