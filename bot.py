@@ -162,7 +162,7 @@ def enviar_correo(usuario):
 
         cuerpo = (
             "Hola,\n\n"
-            "Adjunto encontrarás la cotización solicitada.\n\n"
+            "Adjunto encontrarás la cotización solicitada. Para confirmar el servicio, responder este correo o comunicarse al +56997799101\n\n"
             f"ID Cotización: {usuario.get('cotizacion_id','')}\n"
             f"Origen: {usuario.get('Origen','')}\n"
             f"Destino: {usuario.get('Destino','')}\n"
@@ -626,7 +626,7 @@ def procesar_flujo(to, texto, texto_lower):
         guardar_en_sheet(u)
         enviar_correo(u)
 
-        enviar_texto(to, "✅ Solicitud enviada. Gracias.")
+        enviar_texto(to, "✅ Solicitud enviada, RECUERDA REVISAR TUS CORREOS DE SPAM/NO DESEADOS. ¡Gracias!")
         usuarios.pop(to, None)
         return
 
