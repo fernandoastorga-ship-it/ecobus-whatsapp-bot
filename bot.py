@@ -131,33 +131,30 @@ def enviar_botones(to, cuerpo, botones):
         print("❌ Exception WhatsApp enviar_botones:", e)
         return None
 
-
-# -------- Email (SMTP Gmail / STARTTLS) --------
+# -------- Email (Brevo API / HTTPS) --------
 import os
-import mimetypes
-import smtplib
-from email.message import EmailMessage
+import base64
+import requests
 
 from pdf_generator import generar_pdf_cotizacion
 
 
 def enviar_correo(usuario):
     try:
-        # --- Config SMTP desde .env ---
-        SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-        SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-        SMTP_USER = os.getenv("SMTP_USER")          # ej: cotizaciones@ecobus.cl (o gmail)
-        SMTP_PASS = os.getenv("SMTP_PASS")          # App Password (16 chars)
-
-        FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USER)  # si no está, usa SMTP_USER
-        FROM_NAME = os.getenv("FROM_NAME", "Ecobus / Ecovan")
-        NOTIFY_EMAIL = os.getenv("NOTIFY_EMAIL", "")     # CC interno (opcional)
-
-        if not SMTP_USER or not SMTP_PASS:
-            print("❌ Falta SMTP_USER o SMTP_PASS en variables de entorno")
+        BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+        if not BREVO_API_KEY:
+            print("❌ Falta BREVO_API_KEY en variables de entorno")
             return False
 
-        # --- Validar destinatario ---
+        FROM_EMAIL = os.getenv("FROM_EMAIL", "").strip()
+        FROM_NAME = os.getenv("FROM_NAME", "Ecobus / Ecovan").strip()
+        NOTIFY_EMAIL = os.getenv("NOTIFY_EMAIL", "").strip()
+
+        if not FROM_EMAIL:
+            print("❌ Falta FROM_EMAIL en variables de entorno (debe ser un sender verificado en Brevo)")
+            return False
+
+        # ✅ Destinatario
         to_email = (usuario.get("Correo") or "").strip()
         if not to_email:
             print("❌ Usuario sin correo destino (usuario['Correo'] vacío)")
@@ -167,7 +164,10 @@ def enviar_correo(usuario):
         pdf_path = generar_pdf_cotizacion(usuario)
         print("✅ PDF generado en:", pdf_path)
 
-        # --- Construir cuerpo del correo (igual que antes) ---
+        with open(pdf_path, "rb") as f:
+            pdf_base64 = base64.b64encode(f.read()).decode("utf-8")
+
+        # ✅ Cuerpo (texto plano)
         cuerpo = (
             "Hola,\n\n"
             "Adjunto encontrarás la cotización solicitada. Para confirmar el servicio, "
@@ -180,50 +180,36 @@ def enviar_correo(usuario):
             "Ecobus / Ecovan\n"
         )
 
-        # --- Armar EmailMessage ---
-        msg = EmailMessage()
-        msg["Subject"] = "Cotización Ecobus - Transporte Privado"
-        msg["From"] = f"{FROM_NAME} <{FROM_EMAIL}>"
-        msg["To"] = to_email
+        # ✅ Payload Brevo
+        payload = {
+            "sender": {"name": FROM_NAME, "email": FROM_EMAIL},
+            "to": [{"email": to_email}],
+            "subject": "Cotización Ecobus - Transporte Privado",
+            "textContent": cuerpo,
+            "attachment": [
+                {
+                    "content": pdf_base64,
+                    "name": f"cotizacion_{usuario.get('cotizacion_id','')}.pdf"
+                }
+            ]
+        }
 
-        # CC interno si existe
-        if NOTIFY_EMAIL.strip():
-            msg["Cc"] = NOTIFY_EMAIL.strip()
+        # ✅ CC interno si existe
+        if NOTIFY_EMAIL:
+            payload["cc"] = [{"email": NOTIFY_EMAIL}]
 
-        msg.set_content(cuerpo)
-
-        # --- Adjuntar PDF ---
-        pdf_filename = f"cotizacion_{usuario.get('cotizacion_id','')}.pdf"
-        with open(pdf_path, "rb") as f:
-            pdf_bytes = f.read()
-
-        msg.add_attachment(
-            pdf_bytes,
-            maintype="application",
-            subtype="pdf",
-            filename=pdf_filename
-        )
-
-        print("✅ PDF adjuntado:", pdf_filename)
-
-        # --- Adjuntar imagen del mapa SOLO si existe (sin recalcular) ---
+        # ✅ Adjuntar imagen del mapa SOLO si existe (sin recalcular)
         try:
             ruta_img = (usuario.get("Mapa Ruta") or "").strip()
             if ruta_img and os.path.exists(ruta_img):
                 with open(ruta_img, "rb") as f:
-                    img_bytes = f.read()
+                    mapa_base64 = base64.b64encode(f.read()).decode("utf-8")
 
-                ctype, encoding = mimetypes.guess_type(ruta_img)
-                if not ctype:
-                    ctype = "image/png"  # fallback
-                maintype, subtype = ctype.split("/", 1)
-
-                img_filename = f"ruta_referencial_{usuario.get('cotizacion_id','')}.png"
-                msg.add_attachment(
-                    img_bytes,
-                    maintype=maintype,
-                    subtype=subtype,
-                    filename=img_filename
+                payload["attachment"].append(
+                    {
+                        "content": mapa_base64,
+                        "name": f"ruta_referencial_{usuario.get('cotizacion_id','')}.png"
+                    }
                 )
                 print("✅ Imagen de ruta adjunta al correo:", ruta_img)
             else:
@@ -231,23 +217,27 @@ def enviar_correo(usuario):
         except Exception as e:
             print("⚠️ No se pudo adjuntar imagen del mapa:", e)
 
-        # --- Enviar por SMTP (STARTTLS) ---
-        # Nota: send_message enviará a To + Cc automáticamente si existen.
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=25) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
+        url = "https://api.brevo.com/v3/smtp/email"
+        headers = {
+            "accept": "application/json",
+            "api-key": BREVO_API_KEY,
+            "content-type": "application/json"
+        }
 
-        print("📧 Correo enviado por SMTP OK (PDF adjunto)")
-        return True
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
 
-    except smtplib.SMTPAuthenticationError as e:
-        print("❌ Error de autenticación SMTP (revisar App Password / usuario):", e)
+        if r.status_code in (200, 201):
+            try:
+                print("📧 Correo enviado por Brevo OK. Respuesta:", r.json())
+            except Exception:
+                print("📧 Correo enviado por Brevo OK (respuesta no JSON).")
+            return True
+
+        print("❌ Error Brevo:", r.status_code, r.text)
         return False
+
     except Exception as e:
-        print("❌ Exception enviar_correo (SMTP):", e)
+        print("❌ Exception enviar_correo (Brevo):", e)
         return False
 
 # -------- MENÚ --------
