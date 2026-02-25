@@ -134,40 +134,38 @@ def enviar_botones(to, cuerpo, botones):
 # -------- Email (Brevo API / HTTPS) --------
 import os
 import base64
-import requests
-
-from pdf_generator import generar_pdf_cotizacion
-
 
 def enviar_correo(usuario):
     try:
-        BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+        import requests  # por si faltaba, así ves el error en logs dentro de la función
+
+        BREVO_API_KEY = (os.getenv("BREVO_API_KEY") or "").strip()
         if not BREVO_API_KEY:
             print("❌ Falta BREVO_API_KEY en variables de entorno")
             return False
 
-        FROM_EMAIL = os.getenv("FROM_EMAIL", "").strip()
-        FROM_NAME = os.getenv("FROM_NAME", "Ecobus / Ecovan").strip()
-        NOTIFY_EMAIL = os.getenv("NOTIFY_EMAIL", "").strip()
+        FROM_EMAIL = (os.getenv("FROM_EMAIL") or "").strip()
+        FROM_NAME = (os.getenv("FROM_NAME") or "Ecobus / Ecovan").strip()
+        NOTIFY_EMAIL = (os.getenv("NOTIFY_EMAIL") or "").strip()
 
         if not FROM_EMAIL:
-            print("❌ Falta FROM_EMAIL en variables de entorno (debe ser un sender verificado en Brevo)")
+            print("❌ Falta FROM_EMAIL en variables de entorno (sender verificado en Brevo)")
             return False
 
-        # ✅ Destinatario
         to_email = (usuario.get("Correo") or "").strip()
         if not to_email:
             print("❌ Usuario sin correo destino (usuario['Correo'] vacío)")
             return False
 
-        # ✅ Generar PDF
+        # ✅ Import “lazy” para no botar el servidor al iniciar
+        from pdf_generator import generar_pdf_cotizacion
+
         pdf_path = generar_pdf_cotizacion(usuario)
         print("✅ PDF generado en:", pdf_path)
 
         with open(pdf_path, "rb") as f:
             pdf_base64 = base64.b64encode(f.read()).decode("utf-8")
 
-        # ✅ Cuerpo (texto plano)
         cuerpo = (
             "Hola,\n\n"
             "Adjunto encontrarás la cotización solicitada. Para confirmar el servicio, "
@@ -180,40 +178,29 @@ def enviar_correo(usuario):
             "Ecobus / Ecovan\n"
         )
 
-        # ✅ Payload Brevo
         payload = {
             "sender": {"name": FROM_NAME, "email": FROM_EMAIL},
             "to": [{"email": to_email}],
             "subject": "Cotización Ecobus - Transporte Privado",
             "textContent": cuerpo,
             "attachment": [
-                {
-                    "content": pdf_base64,
-                    "name": f"cotizacion_{usuario.get('cotizacion_id','')}.pdf"
-                }
-            ]
+                {"content": pdf_base64, "name": f"cotizacion_{usuario.get('cotizacion_id','')}.pdf"}
+            ],
         }
 
-        # ✅ CC interno si existe
         if NOTIFY_EMAIL:
             payload["cc"] = [{"email": NOTIFY_EMAIL}]
 
-        # ✅ Adjuntar imagen del mapa SOLO si existe (sin recalcular)
+        # Adjuntar imagen mapa si existe
         try:
             ruta_img = (usuario.get("Mapa Ruta") or "").strip()
             if ruta_img and os.path.exists(ruta_img):
                 with open(ruta_img, "rb") as f:
                     mapa_base64 = base64.b64encode(f.read()).decode("utf-8")
-
                 payload["attachment"].append(
-                    {
-                        "content": mapa_base64,
-                        "name": f"ruta_referencial_{usuario.get('cotizacion_id','')}.png"
-                    }
+                    {"content": mapa_base64, "name": f"ruta_referencial_{usuario.get('cotizacion_id','')}.png"}
                 )
-                print("✅ Imagen de ruta adjunta al correo:", ruta_img)
-            else:
-                print("ℹ️ No hay imagen de ruta para adjuntar (Mapa Ruta vacío o no existe).")
+                print("✅ Imagen de ruta adjunta:", ruta_img)
         except Exception as e:
             print("⚠️ No se pudo adjuntar imagen del mapa:", e)
 
@@ -221,25 +208,21 @@ def enviar_correo(usuario):
         headers = {
             "accept": "application/json",
             "api-key": BREVO_API_KEY,
-            "content-type": "application/json"
+            "content-type": "application/json",
         }
 
-        r = requests.post(url, headers=headers, json=payload, timeout=20)
+        r = requests.post(url, headers=headers, json=payload, timeout=12)
 
         if r.status_code in (200, 201):
-            try:
-                print("📧 Correo enviado por Brevo OK. Respuesta:", r.json())
-            except Exception:
-                print("📧 Correo enviado por Brevo OK (respuesta no JSON).")
+            print("📧 Correo enviado por Brevo OK")
             return True
 
         print("❌ Error Brevo:", r.status_code, r.text)
         return False
 
     except Exception as e:
-        print("❌ Exception enviar_correo (Brevo):", e)
+        print("❌ Exception enviar_correo (Brevo):", repr(e))
         return False
-
 # -------- MENÚ --------
 def menu_principal(to):
     enviar_botones(to, "¡Hola! soy Javier , el asistente virtual de Ecobus. Cuentame, ¿Qué deseas hacer hoy? 🚍",
