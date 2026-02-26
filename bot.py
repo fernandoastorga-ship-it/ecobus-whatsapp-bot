@@ -18,6 +18,9 @@ import smtplib
 from email.mime.text import MIMEText
 
 app = Flask(__name__)
+@app.route("/health", methods=["GET"])
+def health():
+    return "ok", 200
 
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "ecobus_token")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
