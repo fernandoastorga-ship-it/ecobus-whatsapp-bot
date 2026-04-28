@@ -1,9 +1,9 @@
 # pricing_engine.py
 
 COSTOS = {
-    "van": {"km": 1100, "hora": 13080},
-    "taxibus": {"km": 1400, "hora": 13080},
-    "bus": {"km": 1470, "hora": 13080},
+    "van": {"km": 1100, "hora": 10080},
+    "taxibus": {"km": 1400, "hora": 10080},
+    "bus": {"km": 1470, "hora": 10080},
 }
 
 # ✅ Precio mínimo por salida (para evitar viajes cortos demasiado baratos)
