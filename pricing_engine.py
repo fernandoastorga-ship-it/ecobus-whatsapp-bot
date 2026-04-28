@@ -14,7 +14,7 @@ MINIMOS_SALIDA = {
 }
 
 
-MARGEN = 0.35  # 40%
+MARGEN = 0.25  # 25%
 
 # Capacidades referenciales (puedes ajustarlas si tu flota real cambia)
 CAPACIDADES = {
