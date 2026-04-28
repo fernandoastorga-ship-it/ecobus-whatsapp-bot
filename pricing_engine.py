@@ -12,7 +12,7 @@ PRECIO_DIESEL = 1450
 FACTOR_COMERCIAL = 3.7
 
 RENDIMIENTO_KM_LITRO = {
-    "van": 8,
+    "van": 6,
     "taxibus": 2.9,
     "bus": 2.9
 }
@@ -36,7 +36,7 @@ def _calcular_precio_base_km(km_total: float, vehiculo: str) -> float:
     """
     Nueva lógica:
     - Bus / Taxibus: ((km_total / 2.9) * 1450 * 3.7)
-    - Van: ((km_total / 8) * 1450 * 3.7)
+    - Van: ((km_total / 6) * 1450 * 3.7)
     """
 
     if km_total <= 0:
