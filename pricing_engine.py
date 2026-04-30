@@ -7,7 +7,7 @@ CAPACIDADES = {
     "bus": 45
 }
 
-# Parámetros nueva lógica pricing
+# Parámetros pricing
 PRECIO_DIESEL = 1450
 FACTOR_COMERCIAL = 3.7
 
@@ -17,7 +17,7 @@ RENDIMIENTO_KM_LITRO = {
     "bus": 2.9
 }
 
-# 🔴 NUEVA LÓGICA: castigo viajes cortos
+# Castigo interno para viajes cortos
 KM_UMBRAL_CORTO = 100
 
 
@@ -36,14 +36,17 @@ def _calcular_precio_base_km(
     km_base_origen: float = 0
 ) -> float:
     """
-    Lógica pricing:
+    Precio:
+    - Van:      (km_tarifarios / 6) * 1450 * 3.7
+    - Taxibus:  (km_tarifarios / 2.9) * 1450 * 3.7
+    - Bus:      (km_tarifarios / 2.9) * 1450 * 3.7
 
-    - Bus / Taxibus: (km / 2.9) * 1450 * 3.7
-    - Van: (km / 6) * 1450 * 3.7
-
-    🔴 Castigo:
-    Si km_total < 100:
+    Si el viaje tiene menos de 100 km:
         km_tarifarios = km_total + km_base_origen
+
+    IMPORTANTE:
+    km_base_origen NO se muestra al cliente.
+    Solo se usa para calcular precio.
     """
 
     if km_total <= 0:
@@ -52,9 +55,10 @@ def _calcular_precio_base_km(
     if vehiculo not in RENDIMIENTO_KM_LITRO:
         raise Exception(f"Vehículo inválido: {vehiculo}")
 
-    # 👇 lógica de castigo (SOLO IDA)
     km_tarifarios = km_total
 
+    # ✅ Castigo solo para viajes menores a 100 km
+    # ✅ Suma SOLO UNA IDA: Peñaflor -> origen
     if km_total < KM_UMBRAL_CORTO and km_base_origen > 0:
         km_tarifarios = km_total + km_base_origen
 
@@ -71,6 +75,12 @@ def calcular_precio(
     pasajeros: int,
     km_base_origen: float = 0
 ) -> dict:
+    """
+    Cotización de 1 solo vehículo.
+
+    horas_total se mantiene para no romper el bot,
+    pero ya no se usa en el cálculo del precio.
+    """
 
     if pasajeros <= 0:
         raise Exception("Pasajeros inválidos")
@@ -78,14 +88,14 @@ def calcular_precio(
     vehiculo = vehiculo_por_pasajeros(pasajeros)
 
     precio_final = _calcular_precio_base_km(
-        km_total,
-        vehiculo,
-        km_base_origen
+        km_total=km_total,
+        vehiculo=vehiculo,
+        km_base_origen=km_base_origen
     )
 
     return {
         "vehiculo": vehiculo,
-        "km_total": round(km_total, 2),  # 👈 visible REAL (sin castigo)
+        "km_total": round(km_total, 2),
         "horas_total": round(horas_total, 2),
         "costo_base": round(precio_final),
         "utilidad": 0,
@@ -100,17 +110,20 @@ def _calcular_precio_por_vehiculo(
     pasajeros_asignados: int,
     km_base_origen: float = 0
 ) -> dict:
+    """
+    Calcula precio para un tipo de vehículo específico.
+    """
 
     precio_final = _calcular_precio_base_km(
-        km_total,
-        vehiculo,
-        km_base_origen
+        km_total=km_total,
+        vehiculo=vehiculo,
+        km_base_origen=km_base_origen
     )
 
     return {
         "vehiculo": vehiculo,
         "pasajeros_asignados": pasajeros_asignados,
-        "km_total": round(km_total, 2),  # 👈 visible REAL
+        "km_total": round(km_total, 2),
         "horas_total": round(horas_total, 2),
         "costo_base": round(precio_final),
         "utilidad": 0,
@@ -124,6 +137,9 @@ def calcular_cotizacion_flotilla(
     pasajeros: int,
     km_base_origen: float = 0
 ) -> dict:
+    """
+    Calcula cotización con 1 o más vehículos según cantidad de pasajeros.
+    """
 
     if pasajeros <= 0:
         raise Exception("Pasajeros inválidos")
@@ -134,11 +150,11 @@ def calcular_cotizacion_flotilla(
 
     if pasajeros <= CAPACIDADES[vehiculo_simple]:
         detalle = _calcular_precio_por_vehiculo(
-            km_total,
-            horas_total,
-            vehiculo_simple,
-            pasajeros,
-            km_base_origen
+            km_total=km_total,
+            horas_total=horas_total,
+            vehiculo=vehiculo_simple,
+            pasajeros_asignados=pasajeros,
+            km_base_origen=km_base_origen
         )
         items.append(detalle)
 
@@ -147,11 +163,11 @@ def calcular_cotizacion_flotilla(
 
         while restantes > CAPACIDADES["bus"]:
             detalle = _calcular_precio_por_vehiculo(
-                km_total,
-                horas_total,
-                "bus",
-                CAPACIDADES["bus"],
-                km_base_origen
+                km_total=km_total,
+                horas_total=horas_total,
+                vehiculo="bus",
+                pasajeros_asignados=CAPACIDADES["bus"],
+                km_base_origen=km_base_origen
             )
             items.append(detalle)
             restantes -= CAPACIDADES["bus"]
@@ -160,31 +176,33 @@ def calcular_cotizacion_flotilla(
             if restantes <= CAPACIDADES["van"]:
                 items.append(
                     _calcular_precio_por_vehiculo(
-                        km_total,
-                        horas_total,
-                        "van",
-                        restantes,
-                        km_base_origen
+                        km_total=km_total,
+                        horas_total=horas_total,
+                        vehiculo="van",
+                        pasajeros_asignados=restantes,
+                        km_base_origen=km_base_origen
                     )
                 )
+
             elif restantes <= CAPACIDADES["taxibus"]:
                 items.append(
                     _calcular_precio_por_vehiculo(
-                        km_total,
-                        horas_total,
-                        "taxibus",
-                        restantes,
-                        km_base_origen
+                        km_total=km_total,
+                        horas_total=horas_total,
+                        vehiculo="taxibus",
+                        pasajeros_asignados=restantes,
+                        km_base_origen=km_base_origen
                     )
                 )
+
             else:
                 items.append(
                     _calcular_precio_por_vehiculo(
-                        km_total,
-                        horas_total,
-                        "bus",
-                        restantes,
-                        km_base_origen
+                        km_total=km_total,
+                        horas_total=horas_total,
+                        vehiculo="bus",
+                        pasajeros_asignados=restantes,
+                        km_base_origen=km_base_origen
                     )
                 )
 
@@ -194,7 +212,7 @@ def calcular_cotizacion_flotilla(
 
     return {
         "pasajeros": pasajeros,
-        "km_total": round(km_total, 2),  # 👈 visible REAL
+        "km_total": round(km_total, 2),
         "horas_total": round(horas_total, 2),
         "items": items,
         "costo_base_total": round(total_costo_base),
@@ -204,6 +222,9 @@ def calcular_cotizacion_flotilla(
 
 
 def resumen_flotilla(items: list[dict]) -> str:
+    """
+    Convierte items de flotilla a un resumen corto.
+    """
 
     if not items:
         return ""
