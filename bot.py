@@ -43,6 +43,8 @@ sheet = client.open_by_key(GOOGLE_SHEETS_ID).sheet1
 
 usuarios = {}
 
+SEDE_PENAFLOR = (-33.60627, -70.87649)
+
 def guardar_en_sheet(usuario):
     try:
         fila = [
@@ -485,7 +487,16 @@ def procesar_flujo(to, texto, texto_lower):
 
             km_total = km_ida + km_vuelta
             horas_total = horas_ida + horas_vuelta
+            km_base_origen = 0
 
+            if km_total < 100:
+                try:
+                    km_base_origen, _, _ = route(SEDE_PENAFLOR, (lat_o, lon_o))
+                    print("✅ KM base Peñaflor -> Origen:", km_base_origen)
+                except Exception as e:
+                    print("⚠️ No se pudo calcular KM base origen:", e)
+                    km_base_origen = 0
+                    
             # ✅ Guardar para PDF
             u["KM Total"] = round(km_total, 2)
             u["Horas Total"] = round(horas_total, 2)
@@ -510,7 +521,8 @@ def procesar_flujo(to, texto, texto_lower):
                 resultado = calcular_precio(
                     km_total=km_total,
                     horas_total=horas_total,
-                    pasajeros=u["Pasajeros"]
+                    pasajeros=u["Pasajeros"],
+                    km_base_origen=km_base_origen
                 )
                 u["Vehiculo"] = resultado["vehiculo"]
                 u["Precio"] = resultado["precio_final"]
@@ -520,7 +532,8 @@ def procesar_flujo(to, texto, texto_lower):
                 resultado = calcular_cotizacion_flotilla(
                     km_total=km_total,
                     horas_total=horas_total,
-                    pasajeros=u["Pasajeros"]
+                    pasajeros=u["Pasajeros"],
+                    km_base_origen=km_base_origen
                 )
 
 
