@@ -17,13 +17,11 @@ RENDIMIENTO_KM_LITRO = {
     "bus": 2.9
 }
 
+# 🔴 NUEVA LÓGICA: castigo viajes cortos
+KM_UMBRAL_CORTO = 100
+
 
 def vehiculo_por_pasajeros(pasajeros: int) -> str:
-    """
-    <=15 van
-    <=30 taxibus
-    >30 bus
-    """
     if pasajeros <= 15:
         return "van"
     elif pasajeros <= 30:
@@ -32,11 +30,20 @@ def vehiculo_por_pasajeros(pasajeros: int) -> str:
         return "bus"
 
 
-def _calcular_precio_base_km(km_total: float, vehiculo: str) -> float:
+def _calcular_precio_base_km(
+    km_total: float,
+    vehiculo: str,
+    km_base_origen: float = 0
+) -> float:
     """
-    Nueva lógica:
-    - Bus / Taxibus: ((km_total / 2.9) * 1450 * 3.7)
-    - Van: ((km_total / 6) * 1450 * 3.7)
+    Lógica pricing:
+
+    - Bus / Taxibus: (km / 2.9) * 1450 * 3.7
+    - Van: (km / 6) * 1450 * 3.7
+
+    🔴 Castigo:
+    Si km_total < 100:
+        km_tarifarios = km_total + km_base_origen
     """
 
     if km_total <= 0:
@@ -45,30 +52,40 @@ def _calcular_precio_base_km(km_total: float, vehiculo: str) -> float:
     if vehiculo not in RENDIMIENTO_KM_LITRO:
         raise Exception(f"Vehículo inválido: {vehiculo}")
 
+    # 👇 lógica de castigo (SOLO IDA)
+    km_tarifarios = km_total
+
+    if km_total < KM_UMBRAL_CORTO and km_base_origen > 0:
+        km_tarifarios = km_total + km_base_origen
+
     rendimiento = RENDIMIENTO_KM_LITRO[vehiculo]
 
-    precio = (km_total / rendimiento) * PRECIO_DIESEL * FACTOR_COMERCIAL
+    precio = (km_tarifarios / rendimiento) * PRECIO_DIESEL * FACTOR_COMERCIAL
 
     return precio
 
 
-def calcular_precio(km_total: float, horas_total: float, pasajeros: int) -> dict:
-    """
-    Cotización de 1 solo vehículo.
-    horas_total se mantiene como parámetro para no romper el resto del sistema,
-    pero ya no se usa en el cálculo del precio.
-    """
+def calcular_precio(
+    km_total: float,
+    horas_total: float,
+    pasajeros: int,
+    km_base_origen: float = 0
+) -> dict:
 
     if pasajeros <= 0:
         raise Exception("Pasajeros inválidos")
 
     vehiculo = vehiculo_por_pasajeros(pasajeros)
 
-    precio_final = _calcular_precio_base_km(km_total, vehiculo)
+    precio_final = _calcular_precio_base_km(
+        km_total,
+        vehiculo,
+        km_base_origen
+    )
 
     return {
         "vehiculo": vehiculo,
-        "km_total": round(km_total, 2),
+        "km_total": round(km_total, 2),  # 👈 visible REAL (sin castigo)
         "horas_total": round(horas_total, 2),
         "costo_base": round(precio_final),
         "utilidad": 0,
@@ -80,18 +97,20 @@ def _calcular_precio_por_vehiculo(
     km_total: float,
     horas_total: float,
     vehiculo: str,
-    pasajeros_asignados: int
+    pasajeros_asignados: int,
+    km_base_origen: float = 0
 ) -> dict:
-    """
-    Calcula precio para un tipo de vehículo específico usando la nueva lógica por km.
-    """
 
-    precio_final = _calcular_precio_base_km(km_total, vehiculo)
+    precio_final = _calcular_precio_base_km(
+        km_total,
+        vehiculo,
+        km_base_origen
+    )
 
     return {
         "vehiculo": vehiculo,
         "pasajeros_asignados": pasajeros_asignados,
-        "km_total": round(km_total, 2),
+        "km_total": round(km_total, 2),  # 👈 visible REAL
         "horas_total": round(horas_total, 2),
         "costo_base": round(precio_final),
         "utilidad": 0,
@@ -99,14 +118,12 @@ def _calcular_precio_por_vehiculo(
     }
 
 
-def calcular_cotizacion_flotilla(km_total: float, horas_total: float, pasajeros: int) -> dict:
-    """
-    Calcula cotización con 1 o más vehículos según cantidad de pasajeros.
-
-    Nueva lógica de precio:
-    - Bus / Taxibus: ((km_total / 2.9) * 1450 * 3.7)
-    - Van: ((km_total / 8) * 1450 * 3.7)
-    """
+def calcular_cotizacion_flotilla(
+    km_total: float,
+    horas_total: float,
+    pasajeros: int,
+    km_base_origen: float = 0
+) -> dict:
 
     if pasajeros <= 0:
         raise Exception("Pasajeros inválidos")
@@ -120,7 +137,8 @@ def calcular_cotizacion_flotilla(km_total: float, horas_total: float, pasajeros:
             km_total,
             horas_total,
             vehiculo_simple,
-            pasajeros
+            pasajeros,
+            km_base_origen
         )
         items.append(detalle)
 
@@ -132,7 +150,8 @@ def calcular_cotizacion_flotilla(km_total: float, horas_total: float, pasajeros:
                 km_total,
                 horas_total,
                 "bus",
-                CAPACIDADES["bus"]
+                CAPACIDADES["bus"],
+                km_base_origen
             )
             items.append(detalle)
             restantes -= CAPACIDADES["bus"]
@@ -144,7 +163,8 @@ def calcular_cotizacion_flotilla(km_total: float, horas_total: float, pasajeros:
                         km_total,
                         horas_total,
                         "van",
-                        restantes
+                        restantes,
+                        km_base_origen
                     )
                 )
             elif restantes <= CAPACIDADES["taxibus"]:
@@ -153,7 +173,8 @@ def calcular_cotizacion_flotilla(km_total: float, horas_total: float, pasajeros:
                         km_total,
                         horas_total,
                         "taxibus",
-                        restantes
+                        restantes,
+                        km_base_origen
                     )
                 )
             else:
@@ -162,7 +183,8 @@ def calcular_cotizacion_flotilla(km_total: float, horas_total: float, pasajeros:
                         km_total,
                         horas_total,
                         "bus",
-                        restantes
+                        restantes,
+                        km_base_origen
                     )
                 )
 
@@ -172,7 +194,7 @@ def calcular_cotizacion_flotilla(km_total: float, horas_total: float, pasajeros:
 
     return {
         "pasajeros": pasajeros,
-        "km_total": round(km_total, 2),
+        "km_total": round(km_total, 2),  # 👈 visible REAL
         "horas_total": round(horas_total, 2),
         "items": items,
         "costo_base_total": round(total_costo_base),
@@ -182,9 +204,6 @@ def calcular_cotizacion_flotilla(km_total: float, horas_total: float, pasajeros:
 
 
 def resumen_flotilla(items: list[dict]) -> str:
-    """
-    Convierte items de flotilla a un resumen corto.
-    """
 
     if not items:
         return ""
